@@ -11,13 +11,25 @@ int main()
     Bus bus(ram, gpu);
 
     bus.Write(0xFFFC, 0x00); // define reset vector
-    bus.Write(0xFFFD, 0x80);
+    bus.Write(0xFFFD, 0x00);
 
     bus.Write(0xFFFE, 0x00); // define interrupt handler
     bus.Write(0xFFFF, 0x90);
 
 
     cpu.Reset(bus);
+
+    bus.Write(0x0008, 0x05);
+    bus.Write(0x2001, 0x09);
+
+    std::cout << (int)bus.Read(0x0008) << std::endl;
+    std::cout << (int)bus.Read(0x0808) << std::endl;
+    std::cout << (int)bus.Read(0x1008) << std::endl;
+    std::cout << (int)bus.Read(0x1808) << std::endl;
+
+    std::cout << (int)bus.Read(0x2001) << std::endl;
+    std::cout << (int)bus.Read(0x2009) << std::endl;
+    std::cout << (int)bus.Read(0x2011) << std::endl;
 
 
     //inline program - draw diagonal line
@@ -28,7 +40,7 @@ int main()
       LDX 0x00
       LDY 0x00
 
-      // write to gpu mapped memory
+       write to gpu mapped memory
       PHA
       TAX
       LDA 0x01
@@ -53,7 +65,7 @@ int main()
 
 
     */
-
+//
 //    bus.Write(0x8000, 0xA9); // LDA
 //    bus.Write(0x8001, 0x00);
 //
