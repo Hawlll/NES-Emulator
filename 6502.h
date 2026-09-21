@@ -74,8 +74,8 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0xBD: { // LDA (Absolute index X addressing mode) (Load into Accumulator register) - take value from sum of (absolute address formed by next two bytes) + (X register) and put into accumulator. grants another cycle if page cross
                 uint8_t low_byte = bus.Read(PC+1);
-                uint8_t result = low_byte + X;
-                if (result >= low_byte) {
+                uint16_t result = low_byte + X;
+                if (result > 0xFF) {
                     return 4;
                 }
                 else{
@@ -703,7 +703,6 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         else {
                             address_latch = (PC+1) + imm;
                         }
-                        PC++;
                         break;
                     }
                     case 1:
@@ -733,7 +732,6 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         else {
                             address_latch = (PC+1) + imm;
                         }
-                        PC++;
                         break;
                     }
                     case 1:
