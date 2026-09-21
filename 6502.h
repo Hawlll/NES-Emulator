@@ -21,6 +21,13 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
 
     void Reset(Bus& bus) { // reset vector
 
+        B_FLAG = 0b00010000;
+        V_FLAG = 0b01000000;
+        C_FLAG = 0b00000001;
+        Z_FLAG = 0b00000010;
+        N_FLAG = 0b10000000;
+        I_FLAG = 0b00000100;
+
         uint8_t low_byte = bus.Read(0xFFFC);
         uint8_t high_byte = bus.Read(0xFFFD);
 
@@ -33,12 +40,6 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
         cycles = 0x00;
         address_latch = 0x0000;
         SP = 0xFD;
-        B_FLAG = 0b00010000;
-        V_FLAG = 0b01000000;
-        C_FLAG = 0b00000001;
-        Z_FLAG = 0b00000010;
-        N_FLAG = 0b10000000;
-        I_FLAG = 0b00000100;
 
     }
 
@@ -911,7 +912,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
 
     void IRQ(Bus& bus) {
         if ((status & I_FLAG) == 0) {
-            Push((PC & 0xFF00) << 8, bus);
+            Push((PC & 0xFF00) >> 8, bus);
             Push(PC & 0x00FF, bus);
             Push(status & 0b11101111, bus);
             SetIFLAG(true);
@@ -922,7 +923,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
     }
 
     void NMI(Bus& bus) {
-        Push((PC & 0xFF00) << 8, bus);
+        Push((PC & 0xFF00) >> 8, bus);
         Push(PC & 0x00FF, bus);
         Push(status & 0b11101111, bus);
         SetIFLAG(true);

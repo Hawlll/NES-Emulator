@@ -16,25 +16,15 @@ int main()
 
     cpu.Reset(bus);
 
-    std::cout << "Mapper: " << static_cast<int>(cart.mapper) << '\n';
-    std::cout << "PRG size: " << cart.prgROM.size() << '\n';
-    std::cout << "CHR size: " << cart.chrROM.size() << '\n';
-
-    std::cout << std::hex;
-
-    std::cout << "First opcode: "
-              << static_cast<int>(cart.CPURead(0x8000)) << '\n';
-
-    std::cout << "Reset low: "
-              << static_cast<int>(cart.CPURead(0xFFFC)) << '\n';
-
-    std::cout << "Reset high: "
-              << static_cast<int>(cart.CPURead(0xFFFD)) << '\n';
-
-
-
-
-
+    for (int i = 0; i < 10; i++) {
+        std::cout << "PC: " << std::format("{:#X}", (int)cpu.PC) << " | ";
+        std::cout << "OP: " << std::format("{:#X}", (int)cpu.instruction_latch) << " | ";
+        std::cout << "A: " << std::format("{:#X}", (int)cpu.A) << " | ";
+        std::cout << "X: " << std::format("{:#X}", (int)cpu.X) << " | ";
+        std::cout << "Y: " << std::format("{:#X}", (int)cpu.Y) << " | ";
+        std::cout << "SP: " << std::format("{:#X}", (int)cpu.SP) << std::endl;
+        cpu.Clock(bus);
+    }
 
 
     //inline program - draw diagonal line
