@@ -2,34 +2,39 @@
 #include "Bus.h"
 #include "Memory.h"
 #include <iostream>
+#include "Cartridge.h"
 
 int main()
 {
     CPU cpu;
     Memory ram(64);
     Video gpu;
-    Bus bus(ram, gpu);
+    Cartridge cart;
+    Bus bus(ram, gpu, cart);
 
-    bus.Write(0xFFFC, 0x00); // define reset vector
-    bus.Write(0xFFFD, 0x00);
-
-    bus.Write(0xFFFE, 0x00); // define interrupt handler
-    bus.Write(0xFFFF, 0x90);
-
+    cart.Load("rom_tests/nes_mapper0_test.nes");
 
     cpu.Reset(bus);
 
-    bus.Write(0x0008, 0x05);
-    bus.Write(0x2001, 0x09);
+    std::cout << "Mapper: " << static_cast<int>(cart.mapper) << '\n';
+    std::cout << "PRG size: " << cart.prgROM.size() << '\n';
+    std::cout << "CHR size: " << cart.chrROM.size() << '\n';
 
-    std::cout << (int)bus.Read(0x0008) << std::endl;
-    std::cout << (int)bus.Read(0x0808) << std::endl;
-    std::cout << (int)bus.Read(0x1008) << std::endl;
-    std::cout << (int)bus.Read(0x1808) << std::endl;
+    std::cout << std::hex;
 
-    std::cout << (int)bus.Read(0x2001) << std::endl;
-    std::cout << (int)bus.Read(0x2009) << std::endl;
-    std::cout << (int)bus.Read(0x2011) << std::endl;
+    std::cout << "First opcode: "
+              << static_cast<int>(cart.CPURead(0x8000)) << '\n';
+
+    std::cout << "Reset low: "
+              << static_cast<int>(cart.CPURead(0xFFFC)) << '\n';
+
+    std::cout << "Reset high: "
+              << static_cast<int>(cart.CPURead(0xFFFD)) << '\n';
+
+
+
+
+
 
 
     //inline program - draw diagonal line
