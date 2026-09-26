@@ -62,6 +62,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
     }
 
     uint8_t Decode(uint8_t opcode, Bus& bus) { // defined opcodes, return cycles
+
         switch (opcode) {
             case 0xA9: // LDA (Load into Accumulator register) - take immediate 1 byte after opcode and place into accumulator register
                 return 2;
@@ -75,7 +76,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xBD: { // LDA (Absolute index X addressing mode) (Load into Accumulator register) - take value from sum of (absolute address formed by next two bytes) + (X register) and put into accumulator. grants another cycle if page cross
                 uint8_t low_byte = bus.Read(PC+1);
                 uint16_t result = low_byte + X;
-                if (result > 0xFF) {
+                if (result <= 0xFF) {
                     return 4;
                 }
                 else{
@@ -98,10 +99,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x95: // STA (Zero Page index X addressing mode) (Store Accumulator) - take value from accumulator and store into address formed by the sum of the immediate offset of zero page and X register
                 return 4;
                 break;
-            case 0x9D: { // STA (Absolute index X addressing mode) (Store Accumulator) - take value from accumulator and store into address formed by the next two bytes added to the X register
+            case 0x9D: // STA (Absolute index X addressing mode) (Store Accumulator) - take value from accumulator and store into address formed by the next two bytes added to the X register
                 return 5;
                 break;
-            }
             case 0x8E: // STX (Store X register) - take value from X register and store into 16 bit address formed with next two bytes
                 return 4;
                 break;
@@ -128,6 +128,12 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0xE0: // CPX (Compare X) - compare X value with immediate
                 return 2;
+                break;
+            case 0xEE: // INC (Increment Memory absolute addressing mode) - Increments value at absolute address by 1
+                return 6;
+                break;
+            case 0xCE: // DEC (Decrement Memory absolute addressing mode) - Decrements value at absolute address by 1
+                return 6;
                 break;
             case 0xE8: // INX (Increment X) - Add one to the X register
                 return 2;
@@ -166,7 +172,64 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                     return 2;
                 }
                 break;
+            case 0x90: // BCC (Branch if carry clear) - Increment PC by immediate signed offset if carry flag is clear
+                if ((status & C_FLAG) < 1) {
+                    return 3;
+                }
+                else {
+                    return 2;
+                }
+                break;
+            case 0xB0: // BCS (Branch if carry set) - Increment PC by immediate signed offset if carry flag is set
+                if (status & C_FLAG) {
+                    return 3;
+                }
+                else {
+                    return 2;
+                }
+                break;
+            case 0x50: // BVC (Branch if overflow clear) - Increment PC by immediate signed offset if overflow flag is clear
+                if ((status & V_FLAG) < 1) {
+                    return 3;
+                }
+                else {
+                    return 2;
+                }
+                break;
+            case 0x70: // BVS (Branch if overflow set) - Increment PC by immediate signed offset if overflow flag is set
+                if (status & V_FLAG) {
+                    return 3;
+                }
+                else {
+                    return 2;
+                }
+                break;
+            case 0x30: // BMI (Branch if minus) - Increment PC by immediate signed offset if negative flag is set
+                if (status & N_FLAG) {
+                    return 3;
+                }
+                else {
+                    return 2;
+                }
+                break;
+            case 0x10: // BPL (Branch if plus) - Increment PC by immediate signed offset if negative flag is clear
+                if ((status & N_FLAG) < 1) {
+                    return 3;
+                }
+                else {
+                    return 2;
+                }
+                break;
             case 0xAA: // TAX (Transfer A to X) - Load the value in the accumualtor into the X register
+                return 2;
+                break;
+            case 0x8A: // TXA (Transer X to A) - Load the value in the x register into the accumulator
+                return 2;
+                break;
+            case 0xA8: // TAY (Transfer A to Y) - Load the value in the accumulator into the y register
+                return 2;
+                break;
+            case 0x98: // TYA (Transfer Y to A) - Load the value in the y register into the accumulator
                 return 2;
                 break;
             case 0x48: // PHA (Push A) - Push accumulator value to stack
@@ -191,6 +254,33 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 return 2;
                 break;
             case 0x78: // SEI (Set interrupt flag) - sets interrupt flag
+                return 2;
+                break;
+            case 0x29: // AND (Bitwise AND immediate addressing mode) - Bitwise AND accumulator and immediate. Set result to accumulator
+                return 2;
+                break;
+            case 0x09: // ORA (Bitwise OR immediate addressing mode) - Bitwise OR accumulator and immediate. Set result to accumulator
+                return 2;
+                break;
+            case 0x49: // EOR (Bitwise XOR immediate addressing mode) - Bitwise XOR accumulator and immediate. Set result to accumulator
+                return 2;
+                break;
+            case 0x0A: // ASL (Arithmetic Shift Left) - Shifts accumulator value left 1 bit. Stores bit 7 in carry.
+                return 2;
+                break;
+            case 0x4A: // LSR (Logical shift right) - Shifts accumulator value right 1 bit. Stores bit 0 in carry.
+                return 2;
+                break;
+            case 0x2A: // ROL (Rotate left) - Shift accumulator value to left once. Carry goes to bit 0, and bit 7 goes to carry.
+                return 2;
+                break;
+            case 0x6A: // ROR (Rotate right) - Shift accumulator value to right once. Carry goes to bit 7, and bit 0 goes to carry.
+                return 2;
+                break;
+            case 0x2C: // BIT (Bit test absolute addressing mode) - Bit mask from absolute address. Affects Zero, Overflow, and negative flags only.
+                return 4;
+                break;
+            case 0xEA: // NOP (No operation) - Does nothing
                 return 2;
                 break;
             default:
@@ -622,6 +712,64 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
 
 
+            case 0xEE: // INC (Increment Memory absolute addressing mode) - Increments value at absolute address by 1
+
+                switch (cycles) {
+                    case 5:
+                        break;
+                    case 4:
+                        break;
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        value += 1;
+                        bus.Write(address_latch, value);
+                        SetZFLAG(value);
+                        SetNFLAG(value);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0xCE: // DEC (Decrement Memory absolute addressing mode) - Decrements value at absolute address by 1
+
+                switch (cycles) {
+                    case 5:
+                        break;
+                    case 4:
+                        break;
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        value -= 1;
+                        bus.Write(address_latch, value);
+                        SetZFLAG(value);
+                        SetNFLAG(value);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+
             case 0x4C: // JMP (Jump) - Update PC to address formed by next two bytes
 
                 switch (cycles) {
@@ -748,6 +896,186 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
 
 
+            case 0x90: // BCC (Branch if carry clear) - Increment PC by immediate signed offset if carry flag is clear
+
+                switch (cycles) {
+                    case 2: {
+                        uint8_t imm = Fetch(PC, bus);
+                        uint8_t sign = imm & (1 << 7);
+                        uint8_t magnitude = ~imm + 1;
+
+                        if (sign) {
+                            address_latch = (PC+1) - magnitude;
+                        }
+                        else {
+                            address_latch = (PC+1) + imm;
+                        }
+                        break;
+                    }
+                    case 1:
+                        if ((status & C_FLAG) < 1) {
+                            PC = address_latch;
+                        }
+                        else {
+                            PC++;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0x50: // BVC (Branch if overflow clear) - Increment PC by immediate signed offset if overflow flag is clear
+
+                switch (cycles) {
+                    case 2: {
+                        uint8_t imm = Fetch(PC, bus);
+                        uint8_t sign = imm & (1 << 7);
+                        uint8_t magnitude = ~imm + 1;
+
+                        if (sign) {
+                            address_latch = (PC+1) - magnitude;
+                        }
+                        else {
+                            address_latch = (PC+1) + imm;
+                        }
+                        break;
+                    }
+                    case 1:
+                        if ((status & V_FLAG) < 1) {
+                            PC = address_latch;
+                        }
+                        else {
+                            PC++;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0x70: // BVS (Branch if overflow set) - Increment PC by immediate signed offset if overflow flag is set
+
+                switch (cycles) {
+                    case 2: {
+                        uint8_t imm = Fetch(PC, bus);
+                        uint8_t sign = imm & (1 << 7);
+                        uint8_t magnitude = ~imm + 1;
+
+                        if (sign) {
+                            address_latch = (PC+1) - magnitude;
+                        }
+                        else {
+                            address_latch = (PC+1) + imm;
+                        }
+                        break;
+                    }
+                    case 1:
+                        if (status & V_FLAG) {
+                            PC = address_latch;
+                        }
+                        else {
+                            PC++;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0xB0: // BCS (Branch if carry set) - Increment PC by immediate signed offset if carry flag is set
+
+                switch (cycles) {
+                    case 2: {
+                        uint8_t imm = Fetch(PC, bus);
+                        uint8_t sign = imm & (1 << 7);
+                        uint8_t magnitude = ~imm + 1;
+
+                        if (sign) {
+                            address_latch = (PC+1) - magnitude;
+                        }
+                        else {
+                            address_latch = (PC+1) + imm;
+                        }
+                        break;
+                    }
+                    case 1:
+                        if (status & C_FLAG) {
+                            PC = address_latch;
+                        }
+                        else {
+                            PC++;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0x30: // BMI (Branch if minus) - Increment PC by immediate signed offset if negative flag is set
+
+                switch (cycles) {
+                    case 2: {
+                        uint8_t imm = Fetch(PC, bus);
+                        uint8_t sign = imm & (1 << 7);
+                        uint8_t magnitude = ~imm + 1;
+
+                        if (sign) {
+                            address_latch = (PC+1) - magnitude;
+                        }
+                        else {
+                            address_latch = (PC+1) + imm;
+                        }
+                        break;
+                    }
+                    case 1:
+                        if (status & N_FLAG) {
+                            PC = address_latch;
+                        }
+                        else {
+                            PC++;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+            // BPL (Branch if plus) - Increment PC by immediate signed offset if negative flag is clear
+
+            case 0x10: // BPL (Branch if plus) - Increment PC by immediate signed offset if negative flag is clear
+
+                switch (cycles) {
+                    case 2: {
+                        uint8_t imm = Fetch(PC, bus);
+                        uint8_t sign = imm & (1 << 7);
+                        uint8_t magnitude = ~imm + 1;
+
+                        if (sign) {
+                            address_latch = (PC+1) - magnitude;
+                        }
+                        else {
+                            address_latch = (PC+1) + imm;
+                        }
+                        break;
+                    }
+                    case 1:
+                        if ((status & N_FLAG) < 1) {
+                            PC = address_latch;
+                        }
+                        else {
+                            PC++;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
             case 0xAA: // TAX (Transfer A to X) - Load the value in the accumualtor into the X register
 
                 switch (cycles) {
@@ -760,6 +1088,49 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         break;
                 }
                 break;
+
+            case 0x8A: // TXA (Transfer X to A) - Load the value in the x register into the accumulator
+
+                switch (cycles) {
+                    case 1:
+                        A = X;
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0xA8: // TAY (Transfer A to Y) - Load the value in the accumulator into the y register
+
+                switch (cycles) {
+                    case 1:
+                        Y = A;
+                        SetZFLAG(Y);
+                        SetNFLAG(Y);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+                // TYA (Transfer Y to A) - Load the value in the y register into the accumulator
+
+            case 0x98: // TYA (Transfer Y to A) - Load the value in the y register into the accumulator
+
+                switch (cycles) {
+                    case 1:
+                        A = Y;
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
 
             case 0x48: // PHA (Push A) - Push accumulator value to stack
 
@@ -892,10 +1263,157 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+
+            case 0x29: // AND (Bitwise AND immediate addressing mode) - Bitwise AND accumulator and immediate. Set result to accumulator
+
+                switch (cycles) {
+                    case 1: {
+                        uint8_t imm = Fetch(PC, bus);
+                        A = A & imm;
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        PC++;
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+            case 0x09: // ORA (Bitwise OR immediate addressing mode) - Bitwise OR accumulator and immediate. Set result to accumulator
+
+                switch (cycles) {
+                    case 1: {
+                        uint8_t imm = Fetch(PC, bus);
+                        A = A | imm;
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        PC++;
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+            case 0x49: // EOR (Bitwise XOR immediate addressing mode) - Bitwise XOR accumulator and immediate. Set result to accumulator
+
+                switch (cycles) {
+                    case 1: {
+                        uint8_t imm = Fetch(PC, bus);
+                        A = A ^ imm;
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        PC++;
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0x0A: // ASL (Arithmetic Shift Left) - Shifts accumulator value left 1 bit. Stores bit 7 in carry.
+
+                switch (cycles) {
+                    case 1:
+                        SetCFLAG((A & 0x80) > 0);
+                        A = A << 1;
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+            case 0x4A: // LSR (Logical shift right) - Shifts accumulator value right 1 bit. Stores bit 0 in carry.
+
+                switch (cycles) {
+                    case 1:
+                        SetCFLAG((A & 0b00000001) > 0);
+                        A = A >> 1;
+                        SetZFLAG(A);
+                        SetNFLAG(false);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0x2A: // ROL (Rotate left) - Shift accumulator value to left. Carry goes to bit 0, and bit 7 goes to carry.
+
+                switch (cycles) {
+                    case 1: {
+                        uint8_t prev_carry = (status & C_FLAG) > 0;
+                        SetCFLAG((A & 0x80) > 0);
+                        A = A << 1;
+                        A |= prev_carry;
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+            case 0x6A: // ROR (Rotate right) - Shift accumulator value to right once. Carry goes to bit 7, and bit 0 goes to carry.
+
+                switch (cycles) {
+                    case 1: {
+                        uint8_t prev_carry = (status & C_FLAG) > 0;
+                        SetCFLAG((A & 0x01) > 0);
+                        A = A >> 1;
+                        A |= (prev_carry << 7);
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+            case 0x2C: // BIT (Bit test absolute addressing mode) - Bit mask from absolute address. Affects Zero, Overflow, and negative flags only.
+
+                switch (cycles) {
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        SetVFLAG((value & V_FLAG) > 0);
+                        SetZFLAG((A & value) == 0);
+                        SetNFLAG((value & N_FLAG) > 0);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+            case 0xEA: // NOP (No operation) - Does nothing
+
+                switch (cycles) {
+                    case 1:
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
             default:
                 throw std::runtime_error("Instruction does not exist: " + std::format("{:#X}\n", (int)instruction_latch));
                 break;
         }
+
     }
 
     void Push(uint8_t data, Bus& bus) {
@@ -915,7 +1433,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             Push(status & 0b11101111, bus);
             SetIFLAG(true);
             address_latch = 0x0000 + bus.Read(0xFFFE);
-            address_latch |= bus.Read(0xFFFF) >> 8;
+            address_latch |= bus.Read(0xFFFF) << 8;
             PC = address_latch;
         }
     }
@@ -926,7 +1444,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
         Push(status & 0b11101111, bus);
         SetIFLAG(true);
         address_latch = 0x0000 + bus.Read(0xFFFA);
-        address_latch |= bus.Read(0xFFFB) >> 8;
+        address_latch |= bus.Read(0xFFFB) << 8;
         PC = address_latch;
     }
 
@@ -939,9 +1457,27 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
         }
     }
 
+    void SetZFLAG(bool value) {
+        if (value) {
+            status |= Z_FLAG;
+        }
+        else {
+            status &= ~Z_FLAG;
+        }
+    }
+
 
     void SetNFLAG(uint8_t reg) {
         if ((reg & (1 << 7)) > 0) {
+            status |= N_FLAG;
+        }
+        else {
+            status &= ~N_FLAG;
+        }
+    }
+
+    void SetNFLAG(bool value) {
+        if (value) {
             status |= N_FLAG;
         }
         else {
