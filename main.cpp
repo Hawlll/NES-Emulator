@@ -1,6 +1,7 @@
 #include "6502.h"
 #include "Bus.h"
 #include <iostream>
+#include <SDL3/SDL.h>
 
 int main()
 {
@@ -45,9 +46,78 @@ int main()
 //        cpu.Clock(bus);
 //    }
 
-    ppu.PrintTile(ppu.DecodeTile(0x0010)); // tile 1
-    ppu.PrintTile(ppu.DecodeTile(0x0020)); // tile 2
-    ppu.PrintTile(ppu.DecodeTile(0x0030)); // tile 3
+    // test ppu graphics
+
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        std::cerr << "SDL initialization failed: "
+                  << SDL_GetError() << std::endl;
+        return 1;
+    }
+
+    SDL_Window* window = SDL_CreateWindow(
+        "NES Emulator",
+        256 * 3,
+        240 * 3,
+        0
+    );
+
+    if (window == nullptr) {
+        std::cerr << "Window creation failed: "
+                  << SDL_GetError() << std::endl;
+        SDL_Quit();
+        return 1;
+    }
+
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
+
+    if (renderer == nullptr) {
+        std::cerr << "Renderer creation failed: "
+                  << SDL_GetError() << std::endl;
+        return 1;
+    }
+
+    SDL_SetRenderLogicalPresentation(
+        renderer,
+        256,
+        240,
+        SDL_LOGICAL_PRESENTATION_INTEGER_SCALE
+    );
+
+    bool running = true;
+    ppu.DrawPatternTable(0x0000);
+
+    while (running) {
+        SDL_Event event;
+
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_QUIT) {
+                running = false;
+            }
+        }
+        for (size_t y = 0; y < 240; y++) {
+            for (size_t x = 0; x < 256; x++) {
+                uint8_t pxl_val = ppu.frameBuffer[y][x];
+                uint8_t intensity = pxl_val * 85;
+
+                SDL_SetRenderDrawColor(
+                    renderer,
+                    intensity,
+                    intensity,
+                    intensity,
+                    255
+                );
+
+                SDL_RenderPoint(renderer, x, y);
+            }
+        }
+        SDL_RenderPresent(renderer);
+
+
+    }
+
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
 
     return 0;
 }

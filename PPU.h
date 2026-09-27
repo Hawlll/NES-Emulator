@@ -154,6 +154,26 @@ struct PPU {
         }
     }
 
+    void DrawPatternTable(uint16_t patternTableAddress) {
+        for (int tileNum = 0; tileNum < 256; tileNum++) {
+            int y = (tileNum / 16) * 8;
+            int x = (tileNum % 16) * 8;
+            uint16_t tileAddr = patternTableAddress + (tileNum * 16);
+            auto tile = DecodeTile(tileAddr);
+
+            DrawTile(tile, x, y);
+
+        }
+    }
+
+    void DrawNameTable(uint16_t nametableAddress) {
+        for (int row = 0; row < 31; row++) {
+            for (int col = 0; col < 33; col++) {
+
+            }
+        }
+    }
+
     void Clock() {
 
         if (scanline == 241 && dots == 1) { // in VBlank
