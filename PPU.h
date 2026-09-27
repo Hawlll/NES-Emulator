@@ -58,6 +58,17 @@ struct PPU {
             }
             write_toggle = !write_toggle;
         }
+        else if (address == 0x2007) {
+
+            ppuBus.Write(ppu_address, data);
+            if ((PPUCTRL & 0x04) > 0) {
+                ppu_address += 32;
+            }
+            else {
+                ppu_address += 1;
+            }
+            ppu_address &= 0x3FFF;
+        }
         else {
             throw std::runtime_error("Unsupported PPU register write");
         }

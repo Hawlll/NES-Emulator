@@ -12,14 +12,15 @@ struct PPUBus {
 
     uint16_t PaletteAddress(uint16_t Address) {
 
-        uint8_t offset = Address - 0x3F00;
         if (Address >= 0x3F00 && Address <= 0x3FFF) {
+
+            uint8_t offset = (Address - 0x3F00) & 0x001F;
 
             if (offset == 0x10 || offset == 0x14 || offset == 0x18 || offset == 0x1C) {
                 return offset - 0x10;
             }
             else {
-                return offset & 0x01F;
+                return offset;
             }
         }
         else {
@@ -76,7 +77,7 @@ struct PPUBus {
     void Write(uint16_t Address, uint8_t Value) {
 
         if (Address <= 0x1FFF) { // cartridge CHR write
-
+            cart.PPUWrite(Address, Value);
         }
         else if (Address <= 0x3EFF) { // nametable write
 

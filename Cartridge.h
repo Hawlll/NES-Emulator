@@ -12,11 +12,12 @@ struct Cartridge {
 
     std::vector<uint8_t> prgROM; // program read only memory (program code)
     std::vector<uint8_t> chrROM; // character/tile read only memory (graphics data)
+    std::vector <uint8_t> chrRAM; // character ram when character ROM not provided
     uint8_t mapper;
     uint8_t nametableMirroring; // 0 means horizontally mirrored
 
 
-    Cartridge() : prgROM{}, chrROM{}, mapper{0x00}, nametableMirroring{0x00} {};
+    Cartridge() : prgROM{}, chrROM{}, chrRAM(), mapper{0x00}, nametableMirroring{0x00} {};
 
     uint8_t CPURead(uint16_t Address) {
 
@@ -56,14 +57,32 @@ struct Cartridge {
                     throw std::runtime_error("Outside cartridge address range");
                 }
                 else if (chrROM.size() == 0) {
-                    throw std::runtime_error("CHR RAM not implemented");
+                    return chrRAM[Address];
                 }
                 else {
                     return chrROM[Address];
                 }
 
-                break;
+            }
 
+            default:
+                throw std::runtime_error("Unsupported Mapper");
+        }
+    }
+
+    void PPUWrite(uint16_t Address, uint8_t Value) {
+        switch (mapper) {
+            case 0x00: { // Mapper 0
+                if (Address > 0x1FFF) {
+                    throw std::runtime_error("Outside cartridge address range");
+                }
+                else if (chrROM.size() == 0) {
+                    chrRAM[Address] = Value;
+                }
+                else {
+                    throw std::runtime_error("Can't write. Cartridge provided chrROM");
+                }
+                break;
             }
 
             default:
@@ -135,6 +154,11 @@ struct Cartridge {
 
         if (chrSize > 0 && !file.read(reinterpret_cast<char*>(chrROM.data()), (int)chrSize)) { // read graphics data
             throw std::runtime_error("Failed to read CHRROM");
+        }
+
+        if (chrSize == 0) {
+            chrRAM.resize(1024 * 8, 0x00);
+            chrRAM.clear();
         }
 
 
