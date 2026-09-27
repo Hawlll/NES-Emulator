@@ -10,9 +10,12 @@ struct PPU {
     int scanline = 0; // step of screen
     int dots = 0; // PPU cycles
     uint16_t ppu_address = 0x0000; // address register (14 bit address space)
+    uint8_t read_buffer = 0x00; // internal read buffer since reads from CPU are delayed
 
     bool send_NMI = false; // send NMI to cpu if true
     bool write_toggle = false; // write order of PPU address (false=expecting first write)
+
+    std::vector<std::vector<uint8_t>> frameBuffer{240, std::vector<uint8_t>(256, 0)};
 
     PPUBus& ppuBus;
 
@@ -35,6 +38,29 @@ struct PPU {
             write_toggle = false;
             return prev;
         }
+        else if (address == 0x2007) {
+
+            uint8_t ret_val = 0x00;
+            if (ppu_address >= 0x3F00) { // palette ram
+                ret_val = ppuBus.Read(ppu_address);
+                read_buffer = ppuBus.Read(ppu_address - 0x1000); // corresponding value in nametable
+            }
+            else {
+                ret_val = read_buffer;
+                read_buffer = ppuBus.Read(ppu_address);
+            }
+
+            if ((PPUCTRL & 0x04) > 0) { // if vram address increment is set
+                ppu_address += 32;
+            }
+            else {
+                ppu_address += 1;
+            }
+            ppu_address &= 0x3FFF;
+            return ret_val;
+
+        }
+
 
         else {
             throw std::runtime_error("Unsupported PPU register read");
@@ -61,7 +87,7 @@ struct PPU {
         else if (address == 0x2007) {
 
             ppuBus.Write(ppu_address, data);
-            if ((PPUCTRL & 0x04) > 0) {
+            if ((PPUCTRL & 0x04) > 0) { // if vram address increment is set
                 ppu_address += 32;
             }
             else {
@@ -71,6 +97,60 @@ struct PPU {
         }
         else {
             throw std::runtime_error("Unsupported PPU register write");
+        }
+    }
+
+    auto DecodeTile(uint16_t tileAddress) {
+        std::vector<std::vector<uint8_t>> pixels(8, std::vector<uint8_t>(8, 0));
+
+        for (size_t row = 0; row < 8; row++) {
+
+            uint8_t lowPlane  = ppuBus.Read(tileAddress + row);
+            uint8_t highPlane = ppuBus.Read(tileAddress + row + 8);
+
+            for (size_t x = 0; x < 8; x++) {
+                int col = 7 - x;
+                uint8_t pixel_val = (((highPlane & (1 << col)) > 0) << 1) | ((lowPlane & (1 << col)) > 0);
+                pixels[row][x] = pixel_val;
+            }
+        }
+        return pixels;
+    }
+
+    void PrintTile(const std::vector<std::vector<uint8_t>>& pixels) {
+        for (size_t row = 0; row < 8; row++) {
+
+            for (size_t x = 0; x < 8; x++) {
+                char c;
+                uint8_t pxl_val = pixels[row][x];
+
+                if (pxl_val == 0x00) {
+                    c = ' ';
+                }
+                else if (pxl_val == 0x01) {
+                    c = '.';
+                }
+                else if (pxl_val == 0x02) {
+                    c = '*';
+                }
+                else if (pxl_val == 0x03) {
+                    c = '#';
+                }
+                else {
+                    c = 'N';
+                }
+                std::cout << c;
+            }
+            std::cout << std::endl;
+        }
+    }
+
+    void DrawTile (std::vector<std::vector<uint8_t>>& tile, int screenX, int screenY) {
+        for (size_t row = 0; row < 8; row++) {
+
+            for (size_t x = 0; x < 8; x++) {
+                    frameBuffer[static_cast<size_t>(screenX) + x][static_cast<size_t>(screenY) + row] = tile[row][x];
+            }
         }
     }
 
