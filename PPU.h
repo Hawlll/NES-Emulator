@@ -19,8 +19,13 @@ struct PPU {
     PPU(PPUBus& ppuB) : ppuBus(ppuB) {}
 
     uint8_t Read(uint16_t Address) {
-        return ppuBus.PPURead(Address);
+        return ppuBus.Read(Address);
     }
+
+    void Write(uint16_t Address, uint8_t Value) {
+        ppuBus.Write(Address, Value);
+    }
+
 
     uint8_t CPURead(uint16_t address) {
         if (address == 0x2002) {

@@ -13,9 +13,10 @@ struct Cartridge {
     std::vector<uint8_t> prgROM; // program read only memory (program code)
     std::vector<uint8_t> chrROM; // character/tile read only memory (graphics data)
     uint8_t mapper;
+    uint8_t nametableMirroring; // 0 means horizontally mirrored
 
 
-    Cartridge() : prgROM{}, chrROM{}, mapper{0x00} {};
+    Cartridge() : prgROM{}, chrROM{}, mapper{0x00}, nametableMirroring{0x00} {};
 
     uint8_t CPURead(uint16_t Address) {
 
@@ -40,13 +41,11 @@ struct Cartridge {
                 }
 
                 return prgROM[prgIndex];
-                break;
 
             }
 
             default:
                 throw std::runtime_error("Unsupported Mapper");
-                break;
         }
     }
 
@@ -69,7 +68,6 @@ struct Cartridge {
 
             default:
                 throw std::runtime_error("Unsupported Mapper");
-                break;
         }
     }
 
@@ -84,7 +82,6 @@ struct Cartridge {
             }
             default:
                 throw std::runtime_error("Unsupported Mapper");
-                break;
         }
     }
 
@@ -120,7 +117,9 @@ struct Cartridge {
         mapper = highMap | lowMap;
 
         size_t prgSize = header[4] * 16384;
-        size_t chrSize = (int)header[5] * 8192;
+        size_t chrSize = header[5] * 8192;
+
+        nametableMirroring = header[6] & 0b00000001;
 
         prgROM.resize(prgSize);
         chrROM.resize(chrSize);

@@ -5,13 +5,16 @@
 int main()
 {
     CPU cpu;
-    Memory ram(64);
+    Memory cpuRam(2);
+
+    Memory ppuRam(2);
+
     Cartridge cart;
 
-    PPUBus ppuBus(cart);
+    PPUBus ppuBus(cart, ppuRam);
     PPU ppu(ppuBus);
 
-    Bus bus(ram, cart, ppu);
+    Bus bus(cpuRam, cart, ppu);
 
 
 
