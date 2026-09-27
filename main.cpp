@@ -1,16 +1,14 @@
 #include "6502.h"
 #include "Bus.h"
-#include "Memory.h"
 #include <iostream>
-#include "Cartridge.h"
 
 int main()
 {
     CPU cpu;
     Memory ram(64);
-    Video gpu;
     Cartridge cart;
-    Bus bus(ram, gpu, cart);
+    PPU ppu;
+    Bus bus(ram, cart, ppu);
 
     cart.Load("rom_tests/nes_mapper0_test.nes");
 

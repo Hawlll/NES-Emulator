@@ -50,6 +50,21 @@ struct Cartridge {
         }
     }
 
+    void CPUWrite(uint16_t Address, uint8_t Value) {
+        switch (mapper) {
+            case 0x00: { // Mapper 0
+                if (Address < 0x8000) {
+                    throw std::runtime_error("Outside cartridge address range");
+                }
+                std::cout << "no functionality yet for cart cpu write" << (int)Value << std::endl;
+                break;
+            }
+            default:
+                throw std::runtime_error("Unsupported Mapper");
+                break;
+        }
+    }
+
     bool Load(const std::string& filepath) {
 
         std::ifstream file(filepath, std::ios::binary); // open file in binary mode

@@ -1,16 +1,16 @@
 #pragma once
 #include "Memory.h"
-#include "Video.h"
 #include "Cartridge.h"
+#include "PPU.h"
 #include <iostream>
 
 struct Bus {
 
     Memory& mem;
-    Video& video;
     Cartridge& rom;
+    PPU& ppu;
 
-    Bus (Memory& memory, Video& vd, Cartridge& rm) : mem(memory), video(vd), rom(rm) {}
+    Bus (Memory& memory, Cartridge& rm, PPU& p) : mem(memory), rom(rm), ppu(p) {}
 
     uint8_t Read(uint16_t Address) { // NES memory map
 
@@ -20,7 +20,7 @@ struct Bus {
         }
 
         else if (Address >= 0x2000 && Address <= 0x3FFF) { // Pixel Processing Unit (PPU) Registers. Only 8 registers, so it will repeat to keep compatibility
-            return 0x00;
+            return ppu.CPURead(0x2000 + (Address & 0x0007));
         }
 
         else if (Address >= 0x4000 && Address <= 0x401F) { // Audio Processing Units and Input/Output
@@ -46,10 +46,14 @@ struct Bus {
         }
 
         else if (Address >= 0x2000 && Address <= 0x3FFF) { // Pixel Processing Unit (PPU) Registers
-
+            ppu.CPUWrite(0x2000 + (Address & 0x0007), Value);
         }
 
         else if (Address >= 0x4000 && Address <= 0x401F) { // Audio Processing Units and Input/Output
+        }
+
+        else if (Address >= 0x4020) { // Cartridge
+            return rom.CPUWrite(Address, Value);
         }
 
         else { // address outside space
