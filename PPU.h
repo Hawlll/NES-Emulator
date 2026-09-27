@@ -1,4 +1,5 @@
 #include <iostream>
+#include "PPUBus.h"
 
 struct PPU {
 
@@ -8,13 +9,28 @@ struct PPU {
 
     int scanline = 0; // step of screen
     int dots = 0; // PPU cycles
+    uint16_t ppu_address = 0x0000; // address register (14 bit address space)
 
     bool send_NMI = false; // send NMI to cpu if true
+    bool write_toggle = false; // write order of PPU address (false=expecting first write)
+
+    PPUBus& ppuBus;
+
+    PPU(PPUBus& ppuB) : ppuBus(ppuB) {}
+
+    uint8_t Read(uint16_t Address) {
+        return ppuBus.PPURead(Address);
+    }
 
     uint8_t CPURead(uint16_t address) {
         if (address == 0x2002) {
-            return PPUSTATUS;
+
+            uint8_t prev = PPUSTATUS;
+            PPUSTATUS &= 0b01111111; // clear VBlank flag
+            write_toggle = false;
+            return prev;
         }
+
         else {
             throw std::runtime_error("Unsupported PPU register read");
         }
@@ -27,6 +43,15 @@ struct PPU {
         }
         else if (address ==  0x2001) {
             PPUMASK = data;
+        }
+        else if (address == 0x2006) {
+            if (write_toggle == false) {
+                ppu_address = (data & 0x3F) << 8;
+            }
+            else {
+                ppu_address |= data;
+            }
+            write_toggle = !write_toggle;
         }
         else {
             throw std::runtime_error("Unsupported PPU register write");
@@ -49,7 +74,7 @@ struct PPU {
 
         dots++;
 
-        if (dots >= 341) {
+        if (dots >= 341) { // finished scanline
             dots = 0;
             scanline++;
 

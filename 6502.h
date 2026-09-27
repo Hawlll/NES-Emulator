@@ -51,14 +51,17 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             Execute(bus);
         }
         else {
-            if (nmi_pending) {
+            if (nmi_pending) { // other component demands interrupt
                 nmi_pending = false;
                 NMI(bus);
+                cycles = 7;
             }
-            uint8_t opcode = Fetch(PC, bus);
-            cycles = Decode(opcode, bus);
-            instruction_latch = opcode;
-            PC++;
+            else { // next instruction
+                uint8_t opcode = Fetch(PC, bus);
+                cycles = Decode(opcode, bus);
+                instruction_latch = opcode;
+                PC++;
+            }
         }
         cycles--;
     }

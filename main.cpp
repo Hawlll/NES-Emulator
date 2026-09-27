@@ -7,8 +7,13 @@ int main()
     CPU cpu;
     Memory ram(64);
     Cartridge cart;
-    PPU ppu;
+
+    PPUBus ppuBus(cart);
+    PPU ppu(ppuBus);
+
     Bus bus(ram, cart, ppu);
+
+
 
     cart.Load("rom_tests/nes_mapper0_test.nes");
 

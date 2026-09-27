@@ -50,6 +50,29 @@ struct Cartridge {
         }
     }
 
+    uint8_t PPURead(uint16_t Address) {
+        switch (mapper) {
+            case 0x00: { // Mapper 0
+                if (Address > 0x1FFF) {
+                    throw std::runtime_error("Outside cartridge address range");
+                }
+                else if (chrROM.size() == 0) {
+                    throw std::runtime_error("CHR RAM not implemented");
+                }
+                else {
+                    return chrROM[Address];
+                }
+
+                break;
+
+            }
+
+            default:
+                throw std::runtime_error("Unsupported Mapper");
+                break;
+        }
+    }
+
     void CPUWrite(uint16_t Address, uint8_t Value) {
         switch (mapper) {
             case 0x00: { // Mapper 0
@@ -64,6 +87,8 @@ struct Cartridge {
                 break;
         }
     }
+
+
 
     bool Load(const std::string& filepath) {
 
