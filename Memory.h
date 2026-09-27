@@ -4,9 +4,9 @@
 
 struct Memory {
     std::vector<uint8_t> mem;
-    uint8_t mem_size_kb;
+    uint32_t mem_size_bytes;
 
-    Memory (uint16_t KiB) : mem(1024 * KiB, 0), mem_size_kb(KiB) {}
+    Memory (uint32_t bytes) : mem(bytes, 0), mem_size_bytes(bytes) {}
 
     uint8_t Read(uint16_t Address) {
         return mem[Address];

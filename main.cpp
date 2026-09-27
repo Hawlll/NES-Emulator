@@ -5,13 +5,14 @@
 int main()
 {
     CPU cpu;
-    Memory cpuRam(2);
+    Memory cpuRam(1024*2);
 
-    Memory ppuRam(2);
+    Memory nametableRam(1024*2);
+    Memory paletteRam(256);
 
     Cartridge cart;
 
-    PPUBus ppuBus(cart, ppuRam);
+    PPUBus ppuBus(cart, nametableRam, paletteRam);
     PPU ppu(ppuBus);
 
     Bus bus(cpuRam, cart, ppu);
