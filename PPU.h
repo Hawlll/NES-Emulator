@@ -9,6 +9,8 @@ struct PPU {
     int scanline = 0; // step of screen
     int dots = 0; // PPU cycles
 
+    bool send_NMI = false; // send NMI to cpu if true
+
     uint8_t CPURead(uint16_t address) {
         if (address == 0x2002) {
             return PPUSTATUS;
@@ -32,6 +34,18 @@ struct PPU {
     }
 
     void Clock() {
+
+        if (scanline == 241 && dots == 1) { // in VBlank
+            PPUSTATUS |= 0b10000000;
+
+            if (PPUCTRL & 0x80) {
+                send_NMI = true;
+            }
+        }
+
+        else if (scanline == 261 && dots == 1) { // in Prerender
+            PPUSTATUS &= 0b01111111;
+        }
 
         dots++;
 

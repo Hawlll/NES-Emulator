@@ -18,6 +18,8 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
     uint8_t B_FLAG; // // break flag
     uint8_t I_FLAG; // interrupt disabled flag
 
+    bool nmi_pending;
+
 
     void Reset(Bus& bus) { // reset vector
 
@@ -27,6 +29,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
         Z_FLAG = 0b00000010;
         N_FLAG = 0b10000000;
         I_FLAG = 0b00000100;
+        nmi_pending = false;
 
         uint8_t low_byte = bus.Read(0xFFFC);
         uint8_t high_byte = bus.Read(0xFFFD);
@@ -48,6 +51,10 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             Execute(bus);
         }
         else {
+            if (nmi_pending) {
+                nmi_pending = false;
+                NMI(bus);
+            }
             uint8_t opcode = Fetch(PC, bus);
             cycles = Decode(opcode, bus);
             instruction_latch = opcode;
