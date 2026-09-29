@@ -177,4 +177,26 @@ struct PPU {
         }
     }
 
+    uint8_t AttributeTableLookup(uint16_t attributeTableAddr, uint8_t tileRow, uint8_t tileCol) { // 4x4 tile region for each byte,  two bits for each quadrant (2x2 tiles)
+        // look up attribute byte for specific tile and extract palette selection
+        uint16_t attributeByteAddr = attributeTableAddr + ((tileRow/4) * 8) + (tileCol/4);
+        uint8_t attributeByte = ppuBus.Read(attributeByteAddr);
+
+        uint8_t quadY = tileRow % 4;
+        uint8_t quadX = tileCol % 4;
+
+        if (quadY < 2 && quadX < 2) { // top left
+            return (attributeByte & (1 << 1)) | (attributeByte & 0x01);
+        }
+        else if (quadY < 2 && quadX >= 2) { // top right
+            return ((attributeByte & (1 << 3)) >> 2) | ((attributeByte & (1 << 2)) >> 2);
+        }
+        else if (quadY >= 2 && quadX < 2) { // bottom left
+            return ((attributeByte & (1 << 5)) >> 4) | ((attributeByte & (1 << 4)) >> 4);
+        }
+        else { // bottom right
+            return ((attributeByte & (1 << 7)) >> 6) | ((attributeByte & (1 << 6)) >> 6);
+        }
+    }
+
 };

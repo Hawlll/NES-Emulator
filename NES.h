@@ -4,8 +4,8 @@
 
 struct NES {
 
-    CPU& cpu;
     PPU& ppu;
+    CPU& cpu;
     Bus& bus;
     uint64_t cycles = 0;
 

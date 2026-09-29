@@ -83,8 +83,8 @@ int main()
 
     std::vector<uint8_t> screenPixels(256*240);
 
-        for (int y = 0; y < 240; y++) {
-            for (int x = 0; x < 256; x++) {
+        for (size_t y = 0; y < 240; y++) {
+            for (size_t x = 0; x < 256; x++) {
                 screenPixels[y * 256 + x] = ppu.frameBuffer[y][x];
             }
         }
@@ -97,7 +97,7 @@ int main()
         }
 
 
-        SDL_UpdateTexture(texture, nullptr, screenPixels.data(), width * sizeof(Uint8));
+        SDL_UpdateTexture(texture, nullptr, screenPixels.data(), width * (int)sizeof(Uint8));
 
         SDL_RenderClear(renderer);
         SDL_RenderTexture(renderer, texture, nullptr, nullptr);
