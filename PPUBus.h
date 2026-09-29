@@ -1,5 +1,7 @@
+#pragma once
 #include "Cartridge.h"
 #include "Memory.h"
+
 
 
 struct PPUBus {

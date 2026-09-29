@@ -1,3 +1,4 @@
+#pragma once
 #include <iostream>
 #include "PPUBus.h"
 
@@ -15,7 +16,7 @@ struct PPU {
     bool send_NMI = false; // send NMI to cpu if true
     bool write_toggle = false; // write order of PPU address (false=expecting first write)
 
-    std::vector<std::vector<uint8_t>> frameBuffer{240, std::vector<uint8_t>(256, 0)};
+    std::vector<std::vector<uint8_t>> frameBuffer{240, std::vector<uint8_t>(256, 0)}; // stores decoded tiles
 
     PPUBus& ppuBus;
 
@@ -100,80 +101,6 @@ struct PPU {
         }
     }
 
-    auto DecodeTile(uint16_t tileAddress) {
-        std::vector<std::vector<uint8_t>> pixels(8, std::vector<uint8_t>(8, 0));
-
-        for (size_t row = 0; row < 8; row++) {
-
-            uint8_t lowPlane  = ppuBus.Read(tileAddress + row);
-            uint8_t highPlane = ppuBus.Read(tileAddress + row + 8);
-
-            for (size_t x = 0; x < 8; x++) {
-                int col = 7 - x;
-                uint8_t pixel_val = (((highPlane & (1 << col)) > 0) << 1) | ((lowPlane & (1 << col)) > 0);
-                pixels[row][x] = pixel_val;
-            }
-        }
-        return pixels;
-    }
-
-    void PrintTile(const std::vector<std::vector<uint8_t>>& pixels) {
-        for (size_t row = 0; row < 8; row++) {
-
-            for (size_t x = 0; x < 8; x++) {
-                char c;
-                uint8_t pxl_val = pixels[row][x];
-
-                if (pxl_val == 0x00) {
-                    c = ' ';
-                }
-                else if (pxl_val == 0x01) {
-                    c = '.';
-                }
-                else if (pxl_val == 0x02) {
-                    c = '*';
-                }
-                else if (pxl_val == 0x03) {
-                    c = '#';
-                }
-                else {
-                    c = 'N';
-                }
-                std::cout << c;
-            }
-            std::cout << std::endl;
-        }
-    }
-
-    void DrawTile (std::vector<std::vector<uint8_t>>& tile, int screenX, int screenY) {
-        for (size_t row = 0; row < 8; row++) {
-
-            for (size_t x = 0; x < 8; x++) {
-                    frameBuffer[static_cast<size_t>(screenX) + x][static_cast<size_t>(screenY) + row] = tile[row][x];
-            }
-        }
-    }
-
-    void DrawPatternTable(uint16_t patternTableAddress) {
-        for (int tileNum = 0; tileNum < 256; tileNum++) {
-            int y = (tileNum / 16) * 8;
-            int x = (tileNum % 16) * 8;
-            uint16_t tileAddr = patternTableAddress + (tileNum * 16);
-            auto tile = DecodeTile(tileAddr);
-
-            DrawTile(tile, x, y);
-
-        }
-    }
-
-    void DrawNameTable(uint16_t nametableAddress) {
-        for (int row = 0; row < 31; row++) {
-            for (int col = 0; col < 33; col++) {
-
-            }
-        }
-    }
-
     void Clock() {
 
         if (scanline == 241 && dots == 1) { // in VBlank
@@ -199,6 +126,53 @@ struct PPU {
             }
         }
 
+    }
+
+    auto DecodeTile(uint16_t Address) { // fetch tile in chrROM. tiles are 16 bytes (8x8) using two-bit plan strategy
+        //  tiles are stored in chrROM sequentially, where the value of pixel one is bit 7 of byte 0 and byte 8
+        // the pixel values are the chosen color index in a palette
+        std::vector<std::vector<uint8_t>> pixels(8, std::vector<uint8_t>(8, 0));
+        for (size_t row = 0; row < 8; row++) {
+            uint8_t lowByte = ppuBus.Read(Address + row);
+            uint8_t highByte = ppuBus.Read(Address + row + 8);
+            for (size_t col = 0; col < 8; col++) {
+                uint8_t lowBit = (lowByte & (1 << (7-col))) > 0;
+                uint8_t highBit = (highByte & (1 << (7-col))) > 0;
+
+                uint8_t pixel = (highBit << 1) | lowBit;
+                pixels[row][col] = pixel;
+            }
+
+        }
+        return pixels;
+    }
+
+    void DrawTile(std::vector<std::vector<uint8_t>>& tile, uint8_t row, uint8_t col) {
+        // Take decoded tile and place in frame buffer based on row and col position
+
+        for (size_t y = 0; y < 8; y++) {
+            for (size_t x = 0; x < 8; x++) {
+                frameBuffer[row+y][col+x] = tile[y][x];
+            }
+        }
+
+    }
+
+    void DrawNameTable(uint16_t Address) {
+        // 30x32 screen. bytes stored sequentially. each byte stores tile id. position on screen is implied
+        // goes through each position on the screen, fetches and decodes tile with tile ID, draws tile in frameBuffer
+        uint16_t patternBaseAddress = 0x0000; // where the tiles are stored in CHR ROM
+                if ((PPUCTRL & (1 << 4)) > 0) {
+                    patternBaseAddress = 0x1000;
+                }
+
+        for (size_t screenY = 0; screenY < 30; screenY++) {
+            for (size_t screenX = 0; screenX < 32; screenX++) {
+                uint8_t tileId = ppuBus.Read(Address + (screenY * 32) + screenX);
+                std::vector<std::vector<uint8_t>> decodedTile = DecodeTile(patternBaseAddress + (tileId*16));
+                DrawTile(decodedTile, screenY*8, screenX*8);
+            }
+        }
     }
 
 };

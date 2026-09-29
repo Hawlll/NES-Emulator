@@ -2,6 +2,7 @@
 #include "Bus.h"
 #include <iostream>
 #include <SDL3/SDL.h>
+#include "NES.h"
 
 int main()
 {
@@ -18,7 +19,7 @@ int main()
 
     Bus bus(cpuRam, cart, ppu);
 
-
+    NES nes(cpu, ppu, bus);
 
     cart.Load("rom_tests/color_test.nes");
 
@@ -48,73 +49,62 @@ int main()
 
     // test ppu graphics
 
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
-        std::cerr << "SDL initialization failed: "
-                  << SDL_GetError() << std::endl;
-        return 1;
-    }
+    int width = 256;
+    int height = 240;
+    SDL_Init(SDL_INIT_VIDEO);
 
-    SDL_Window* window = SDL_CreateWindow(
-        "NES Emulator",
-        256 * 3,
-        240 * 3,
-        0
-    );
+    SDL_Window* window = nullptr;
+    SDL_Renderer* renderer = nullptr;
 
-    if (window == nullptr) {
-        std::cerr << "Window creation failed: "
-                  << SDL_GetError() << std::endl;
-        SDL_Quit();
-        return 1;
-    }
+    SDL_CreateWindowAndRenderer("NES NameTable Viewer", width, height, 0, &window, &renderer);
 
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
+    SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_INDEX8, SDL_TEXTUREACCESS_STREAMING, width, height);
 
-    if (renderer == nullptr) {
-        std::cerr << "Renderer creation failed: "
-                  << SDL_GetError() << std::endl;
-        return 1;
-    }
+    SDL_Color colors[256]{};
 
-    SDL_SetRenderLogicalPresentation(
-        renderer,
-        256,
-        240,
-        SDL_LOGICAL_PRESENTATION_INTEGER_SCALE
-    );
+    colors[0] = {0,   0,   0,   255};
+    colors[1] = {85,  85,  85,  255};
+    colors[2] = {170, 170, 170, 255};
+    colors[3] = {255, 255, 255, 255};
+
+    SDL_Palette* palette = SDL_CreatePalette(256);
+    SDL_SetPaletteColors(palette, colors, 0, 256);
+    SDL_SetTexturePalette(texture, palette);
+    SDL_DestroyPalette(palette);
 
     bool running = true;
-    ppu.DrawPatternTable(0x0000);
+    SDL_Event event;
+
+    for (int i = 0; i < 50000; i++) {
+        nes.Clock();
+    }
+
+    ppu.DrawNameTable(0x2000);
+
+    std::vector<uint8_t> screenPixels(256*240);
+
+        for (int y = 0; y < 240; y++) {
+            for (int x = 0; x < 256; x++) {
+                screenPixels[y * 256 + x] = ppu.frameBuffer[y][x];
+            }
+        }
 
     while (running) {
-        SDL_Event event;
-
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
                 running = false;
             }
         }
-        for (size_t y = 0; y < 240; y++) {
-            for (size_t x = 0; x < 256; x++) {
-                uint8_t pxl_val = ppu.frameBuffer[y][x];
-                uint8_t intensity = pxl_val * 85;
 
-                SDL_SetRenderDrawColor(
-                    renderer,
-                    intensity,
-                    intensity,
-                    intensity,
-                    255
-                );
 
-                SDL_RenderPoint(renderer, x, y);
-            }
-        }
+        SDL_UpdateTexture(texture, nullptr, screenPixels.data(), width * sizeof(Uint8));
+
+        SDL_RenderClear(renderer);
+        SDL_RenderTexture(renderer, texture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
-
-
     }
 
+    SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
