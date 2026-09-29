@@ -30,6 +30,11 @@ struct PPUBus {
         }
     }
 
+    uint16_t AttributeTableLookup(uint16_t nameTableAddress, uint8_t tileRow, uint8_t tileCol) {
+        uint16_t attributeByteAddr = nameTableAddress + 960 + (tileRow / 4) + (tileCol / 4); // wrong at moment
+        uint8_t attributeByte = bus.Read(attributeByteAddr);
+    }
+
     uint16_t NametableAddress(uint16_t Address) {
 
         if (Address >= 0x3000 && Address <= 0x3EFF) {
