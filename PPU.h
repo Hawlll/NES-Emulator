@@ -64,6 +64,7 @@ struct PPU {
 
 
         else {
+            std::cout << std::format("Reading to {:X}", (int)address) << std::endl;
             throw std::runtime_error("Unsupported PPU register read");
         }
 
@@ -97,6 +98,7 @@ struct PPU {
             ppu_address &= 0x3FFF;
         }
         else {
+            std::cout << std::format("Writing to {:X}", (int)address) << std::endl;
             throw std::runtime_error("Unsupported PPU register write");
         }
     }

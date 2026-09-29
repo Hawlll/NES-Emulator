@@ -21,7 +21,7 @@ int main()
 
     NES nes(cpu, ppu, bus);
 
-    cart.Load("rom_tests/color_test.nes");
+    cart.Load("rom_tests/nametable_render_test.nes");
 
     cpu.Reset(bus);
 //
@@ -75,7 +75,7 @@ int main()
     bool running = true;
     SDL_Event event;
 
-    for (int i = 0; i < 50000; i++) {
+    for (int i = 0; i < 500000; i++) {
         nes.Clock();
     }
 

@@ -18,9 +18,10 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
     uint8_t V_FLAG; // overflow flag (signed over/under flow)
     uint8_t B_FLAG; // // break flag
     uint8_t I_FLAG; // interrupt disabled flag
+    uint8_t D_FLAG; // Decimal flag
 
     bool nmi_pending;
-
+    bool interrupt_cycles;
 
     void Reset(Bus& bus) { // reset vector
 
@@ -30,7 +31,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
         Z_FLAG = 0b00000010;
         N_FLAG = 0b10000000;
         I_FLAG = 0b00000100;
+        D_FLAG = 0b00001000;
         nmi_pending = false;
+        interrupt_cycles = false;
 
         uint8_t low_byte = bus.Read(0xFFFC);
         uint8_t high_byte = bus.Read(0xFFFD);
@@ -48,16 +51,22 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
     }
 
     void Clock(Bus& bus) {
+
         if (cycles > 0) { // we are performing instruction
-            Execute(bus);
+
+            if (!interrupt_cycles) {
+                Execute(bus);
+            }
         }
         else {
             if (nmi_pending) { // other component demands interrupt
                 nmi_pending = false;
                 NMI(bus);
                 cycles = 7;
+                interrupt_cycles = true;
             }
             else { // next instruction
+                interrupt_cycles = false;
                 uint8_t opcode = Fetch(PC, bus);
                 cycles = Decode(opcode, bus);
                 instruction_latch = opcode;
@@ -95,8 +104,14 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
             }
+            case 0xAD: // LDA (Absolute addressing mode) (load into accumulator register) - take value from absolute address formed by next two bytes and store into accumulator
+                return 4;
+                break;
             case 0xA2: // LDX(Load into X register) - take immediate value and load into x register
                 return 2;
+                break;
+            case 0xA6: // LDX (Load into X register zero page addressing mode) - take value at zero page with offset and load into x register
+                return 3;
                 break;
             case 0xA0: // LDY (load immediate into Y register) - take immediate value and load into y register
                 return 2;
@@ -132,6 +147,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 return 2;
                 break;
             case 0x38: // SEC (Set Carry) - Sets the carry flag in status register
+                return 2;
+                break;
+            case 0xD8: // CLD (Clear Decimal) - Clears the decimal flag
                 return 2;
                 break;
             case 0xC9: // CMP (Compare Accumulator) - compare accumulator value with immediate
@@ -243,6 +261,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x98: // TYA (Transfer Y to A) - Load the value in the y register into the accumulator
                 return 2;
                 break;
+            case 0x9A: // TXS (Transfer X to SP) - Load the value in the x register into the stack pointer
+                return 2;
+                break;
             case 0x48: // PHA (Push A) - Push accumulator value to stack
                 return 3;
                 break;
@@ -273,6 +294,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x09: // ORA (Bitwise OR immediate addressing mode) - Bitwise OR accumulator and immediate. Set result to accumulator
                 return 2;
                 break;
+            case 0x01: // ORA (Bitwise OR indirect X addressing mode) - Bitwise OR accumulator and indirect. Set result to accumulator
+                return 6;
+                break;
             case 0x49: // EOR (Bitwise XOR immediate addressing mode) - Bitwise XOR accumulator and immediate. Set result to accumulator
                 return 2;
                 break;
@@ -295,7 +319,12 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 return 2;
                 break;
             default:
-                throw std::runtime_error("Instruction does not exist: " + std::format("{:#X}\n", (int)opcode));
+                std::cout << "Unsupported opcode: $"
+                          << std::hex << static_cast<int>(opcode)
+                          << " at PC: $" << PC
+                          << '\n';
+
+                throw std::runtime_error("Unsupported opcode");
                 break;
 
         }
@@ -382,6 +411,28 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0xAD: // LDA (Absolute addressing mode) (load into accumulator register) - take value from absolute address formed by next two bytes and store into accumulator
+
+                switch (cycles) {
+                    case 3:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1:
+                        A = bus.Read(address_latch);
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+
             case 0xA2: // LDX(Load into X register) - take immediate value and load into x register
 
                 switch (cycles) {
@@ -390,6 +441,24 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         SetZFLAG(X);
                         SetNFLAG(X);
                         PC++;
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0xA6: // LDX (Load into X register zero page addressing mode) - take value at zero page with offset and load into x register
+
+                switch (cycles) {
+                    case 2:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 1:
+                        X = bus.Read(address_latch);
+                        SetZFLAG(X);
+                        SetNFLAG(X);
                         break;
                     default:
                         break;
@@ -624,6 +693,17 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 switch (cycles) {
                     case 1:
                         SetCFLAG(true);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+            case 0xD8: // CLD (Clear Decimal) - Clears the decimal flag
+
+                switch (cycles) {
+                    case 1:
+                        SetDFLAG(false);
                         break;
                     default:
                         break;
@@ -1127,7 +1207,6 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
-                // TYA (Transfer Y to A) - Load the value in the y register into the accumulator
 
             case 0x98: // TYA (Transfer Y to A) - Load the value in the y register into the accumulator
 
@@ -1136,6 +1215,18 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         A = Y;
                         SetZFLAG(A);
                         SetNFLAG(A);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0x9A: // TXS (Transfer X to SP) - Load the value in the x register into the stack pointer
+
+                switch (cycles) {
+                    case 1:
+                        SP = X;
                         break;
                     default:
                         break;
@@ -1306,6 +1397,39 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         break;
                 }
                 break;
+
+
+            case 0x01: // ORA (Bitwise OR indirect X addressing mode) - Bitwise OR accumulator and indirect. Set result to accumulator
+
+                switch (cycles) {
+                    case 5:
+                        address_latch = Fetch(PC, bus) << 8;
+                        PC++;
+                        break;
+                    case 4: {
+                        uint8_t value = (address_latch & 0xFF00) >> 8;
+                        uint8_t offset = static_cast<uint8_t>(value+X);
+                        address_latch |= bus.Read(0x0000+offset);
+                        break;
+                    }
+                    case 3: {
+                        uint8_t value = (address_latch & 0xFF00) >> 8;
+                        uint8_t offset = static_cast<uint8_t>(value+X+1);
+                        address_latch = (bus.Read(0x0000+offset) << 8) | (address_latch & 0x00FF);
+                        break;
+                    }
+                    case 2: {
+                        uint8_t value = bus.Read(address_latch);
+                        A |= value;
+                        break;
+                    }
+                    case 1:
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        break;
+                }
+                break;
+
 
             case 0x49: // EOR (Bitwise XOR immediate addressing mode) - Bitwise XOR accumulator and immediate. Set result to accumulator
 
@@ -1551,6 +1675,15 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
         }
         else {
             status &= ~I_FLAG;
+        }
+    }
+
+    void SetDFLAG(bool value) {
+        if (value) {
+            status |= D_FLAG;
+        }
+        else {
+            status &= ~D_FLAG;
         }
     }
 };
