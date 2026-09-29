@@ -149,12 +149,13 @@ struct PPU {
         return pixels;
     }
 
-    void DrawTile(std::vector<std::vector<uint8_t>>& tile, uint8_t row, uint8_t col) {
+    void DrawTile(const std::vector<std::vector<uint8_t>>& tile, uint8_t row, uint8_t col, uint8_t paletteIndex) {
         // Take decoded tile and place in frame buffer based on row and col position
 
         for (size_t y = 0; y < 8; y++) {
             for (size_t x = 0; x < 8; x++) {
-                frameBuffer[row+y][col+x] = tile[y][x];
+                uint8_t colorInd = ColorIndexLookup(paletteIndex, tile[y][x]);
+                frameBuffer[row+y][col+x] = colorInd;
             }
         }
 
@@ -171,8 +172,9 @@ struct PPU {
         for (size_t screenY = 0; screenY < 30; screenY++) {
             for (size_t screenX = 0; screenX < 32; screenX++) {
                 uint8_t tileId = ppuBus.Read(Address + (screenY * 32) + screenX);
-                std::vector<std::vector<uint8_t>> decodedTile = DecodeTile(patternBaseAddress + (tileId*16));
-                DrawTile(decodedTile, screenY*8, screenX*8);
+                uint8_t paletteIndex = AttributeTableLookup(Address + 960, screenY, screenX);
+                auto decodedTile = DecodeTile(patternBaseAddress + (tileId*16));
+                DrawTile(decodedTile, screenY*8, screenX*8, paletteIndex);
             }
         }
     }
@@ -196,6 +198,15 @@ struct PPU {
         }
         else { // bottom right
             return ((attributeByte & (1 << 7)) >> 6) | ((attributeByte & (1 << 6)) >> 6);
+        }
+    }
+
+    uint8_t ColorIndexLookup(uint8_t palette, uint8_t pixelValue) { // lookup color index byte from palette ram
+        if (pixelValue == 0) { // universal background color
+            return ppuBus.Read(0x3F00);
+        }
+        else {
+            return ppuBus.Read(0x3F00 + (palette*4) + pixelValue);
         }
     }
 
