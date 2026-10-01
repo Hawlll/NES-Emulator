@@ -8,3 +8,7 @@ Background Tile and Color Test
 
 Sprite and Background Test
 <img width="867" height="465" alt="image" src="https://github.com/user-attachments/assets/911bbeef-4df0-4719-8d24-7ab5273e147d" />
+
+Sprite-Background Priority Test (left sprite wins, right sprite loses and only visible through transparent background)
+<img width="781" height="748" alt="image" src="https://github.com/user-attachments/assets/997bded0-9264-45b3-9291-3722149062e3" />
+
