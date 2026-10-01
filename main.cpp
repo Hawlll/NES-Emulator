@@ -22,7 +22,7 @@ int main()
 
     NES nes(cpu, ppu, bus);
 
-    cart.Load("rom_tests/background_sprite_dma_test.nes");
+    cart.Load("rom_tests/sprite_background_priority_test.nes");
 
     cpu.Reset(bus);
 //
@@ -108,17 +108,17 @@ int main()
     bool running = true;
     SDL_Event event;
 
-    for (int sprite = 0; sprite < 64; sprite++) {
-        uint8_t base = sprite * 4;
-        ppuBus.OAMWrite(base, 0xFF);
-    }
 
     for (int i = 0; i < 500000; i++) {
         nes.Clock();
     }
 
-
     ppu.DrawNameTable(0x2000);
+
+    for (int sprite = 4; sprite < 64; sprite++) { // change depending on ROM. This is to ensure unused sprites are off screen
+        uint8_t base = sprite * 4;
+        ppuBus.OAMWrite(base, 0xFF);
+    }
 
     for (int sprite = 63; sprite >= 0; sprite--) {
         ppu.DrawSprite(sprite);

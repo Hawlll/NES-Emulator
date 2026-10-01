@@ -19,6 +19,7 @@ struct PPU {
     uint8_t OAMADDR = 0x00; // register for cpu to access OAM
 
     std::vector<std::vector<uint8_t>> frameBuffer{240, std::vector<uint8_t>(256, 0)}; // stores decoded tiles
+    std::vector<std::vector<bool>> backgroundOpaque{240, std::vector<bool>(256, false)}; // stores whether background is universal background color (CHR pixel value was 0)
 
     PPUBus& ppuBus;
 
@@ -168,6 +169,7 @@ struct PPU {
             for (size_t x = 0; x < 8; x++) {
                 uint8_t colorInd = ColorIndexLookupBackground(paletteIndex, tile[y][x]);
                 frameBuffer[row+y][col+x] = colorInd;
+                backgroundOpaque[row+y][col+x] = (tile[y][x] != 0);
             }
         }
 
@@ -234,10 +236,15 @@ struct PPU {
     void DrawSprite(uint8_t spriteNum) {
 
         uint8_t base = spriteNum * 4;
-        uint8_t Y = ppuBus.OAMRead(base);
+        uint16_t Y = ppuBus.OAMRead(base);
         uint8_t tileId = ppuBus.OAMRead(base + 1);
         uint8_t attribute = ppuBus.OAMRead(base + 2);
-        uint8_t X = ppuBus.OAMRead(base + 3);
+        uint16_t X = ppuBus.OAMRead(base + 3);
+
+        bool horizontal_flip = (attribute & (1 << 6)) > 0;
+        bool vertical_flip = (attribute & (1 << 7)) > 0;
+
+        bool backgroundPriority = (attribute & (1 << 5)) > 0;
 
         uint8_t paletteIndex = attribute & 0x03;
 
@@ -252,10 +259,23 @@ struct PPU {
 
         for (size_t row = 0; row < 8; row++) { // theres a quirk for drawing sprites. we add one to Y since Y alone means the next scanline
             for (size_t col = 0; col < 8; col++) {
-                uint8_t pixel_value = tile[row][col];
+                uint8_t sourceRow = row;
+                uint8_t sourceCol = col;
+                if (horizontal_flip) {
+                    sourceCol = 7 - sourceCol;
+                }
+                if (vertical_flip) {
+                    sourceRow = 7 - sourceRow;
+                }
+                uint8_t pixel_value = tile[sourceRow][sourceCol];
                 if (pixel_value != 0 && (Y+row+1) < 240 && (X+col) < 256) {
-                    uint8_t color = ColorIndexLookupSprite(paletteIndex, pixel_value);
-                    frameBuffer[Y+1+row][X+col] = color;
+                    if (backgroundPriority && backgroundOpaque[Y+1+row][X+col]) {
+                            // don't overwrite background
+                    }
+                    else {
+                        uint8_t color = ColorIndexLookupSprite(paletteIndex, pixel_value);
+                        frameBuffer[Y+1+row][X+col] = color;
+                    }
                 }
             }
         }
