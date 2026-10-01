@@ -7,10 +7,11 @@
 struct PPUBus {
 
     Cartridge& cart;
-    Memory& nametableRam;
-    Memory& paletteRam;
+    Memory& nametableRam; // stores tileID and implied tile location
+    Memory& paletteRam; // stores color palettes ( 4 for background, 4 for sprites)
+    Memory& OAM; // (Object Attribute Memory) stores sprite metadata
 
-    PPUBus(Cartridge& c, Memory& nR, Memory& pR) : cart(c), nametableRam(nR), paletteRam(pR) {}
+    PPUBus(Cartridge& c, Memory& nR, Memory& pR, Memory& oam) : cart(c), nametableRam(nR), paletteRam(pR), OAM(oam) {}
 
     uint16_t PaletteAddress(uint16_t Address) {
 
@@ -92,6 +93,14 @@ struct PPUBus {
         else {
             throw std::runtime_error("Unsupported PPU Write address");
         }
+    }
+
+    void OAMWrite(uint8_t Address, uint8_t Value) {
+        OAM.Write(Address, Value);
+    }
+
+    uint8_t OAMRead(uint8_t Address) {
+        return OAM.Read(Address);
     }
 
 

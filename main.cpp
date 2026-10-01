@@ -11,17 +11,18 @@ int main()
 
     Memory nametableRam(1024*2);
     Memory paletteRam(256);
+    Memory OAM(256);
 
     Cartridge cart;
 
-    PPUBus ppuBus(cart, nametableRam, paletteRam);
+    PPUBus ppuBus(cart, nametableRam, paletteRam, OAM);
     PPU ppu(ppuBus);
 
     Bus bus(cpuRam, cart, ppu);
 
     NES nes(cpu, ppu, bus);
 
-    cart.Load("rom_tests/nes_palette_color_test.nes");
+    cart.Load("rom_tests/background_sprite_dma_test.nes");
 
     cpu.Reset(bus);
 //
@@ -51,14 +52,31 @@ int main()
 
     int width = 256;
     int height = 240;
-    SDL_Init(SDL_INIT_VIDEO);
+    int SCALE = 3;
 
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
 
-    SDL_CreateWindowAndRenderer("NES NameTable Viewer", width, height, 0, &window, &renderer);
+    SDL_CreateWindowAndRenderer(
+        "NES Emulator",
+        width * SCALE,
+        height * SCALE,
+        0,
+        &window,
+        &renderer
+    );
 
-    SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_INDEX8, SDL_TEXTUREACCESS_STREAMING, width, height);
+    SDL_Texture* texture = SDL_CreateTexture(
+        renderer,
+        SDL_PIXELFORMAT_INDEX8,
+        SDL_TEXTUREACCESS_STREAMING,
+        width,
+        height
+    );
+
+    SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
+
+
 
     SDL_Color colors[64] = {
     { 84,  84,  84, 255}, {  0,  30, 116, 255}, {  8,  16, 144, 255}, { 48,   0, 136, 255},
@@ -83,26 +101,39 @@ int main()
     };
 
     SDL_Palette* palette = SDL_CreatePalette(256);
-    SDL_SetPaletteColors(palette, colors, 0, 256);
+    SDL_SetPaletteColors(palette, colors, 0, 64);
     SDL_SetTexturePalette(texture, palette);
     SDL_DestroyPalette(palette);
 
     bool running = true;
     SDL_Event event;
 
+    for (int sprite = 0; sprite < 64; sprite++) {
+        uint8_t base = sprite * 4;
+        ppuBus.OAMWrite(base, 0xFF);
+    }
+
     for (int i = 0; i < 500000; i++) {
         nes.Clock();
     }
 
+
     ppu.DrawNameTable(0x2000);
+
+    for (int sprite = 63; sprite >= 0; sprite--) {
+        ppu.DrawSprite(sprite);
+    }
+
 
     std::vector<uint8_t> screenPixels(256*240);
 
-        for (size_t y = 0; y < 240; y++) {
-            for (size_t x = 0; x < 256; x++) {
-                screenPixels[y * 256 + x] = ppu.frameBuffer[y][x];
-            }
+    for (size_t y = 0; y < 240; y++) {
+        for (size_t x = 0; x < 256; x++) {
+            screenPixels[y * 256 + x] = ppu.frameBuffer[y][x];
         }
+    }
+
+
 
     while (running) {
         while (SDL_PollEvent(&event)) {

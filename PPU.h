@@ -16,6 +16,8 @@ struct PPU {
     bool send_NMI = false; // send NMI to cpu if true
     bool write_toggle = false; // write order of PPU address (false=expecting first write)
 
+    uint8_t OAMADDR = 0x00; // register for cpu to access OAM
+
     std::vector<std::vector<uint8_t>> frameBuffer{240, std::vector<uint8_t>(256, 0)}; // stores decoded tiles
 
     PPUBus& ppuBus;
@@ -38,6 +40,9 @@ struct PPU {
             PPUSTATUS &= 0b01111111; // clear VBlank flag
             write_toggle = false;
             return prev;
+        }
+        else if (address == 0x2004) { // OAM
+            return ppuBus.OAMRead(OAMADDR);
         }
         else if (address == 0x2007) {
 
@@ -76,6 +81,13 @@ struct PPU {
         }
         else if (address ==  0x2001) {
             PPUMASK = data;
+        }
+        else if (address == 0x2003) {
+            OAMADDR = data;
+        }
+        else if (address == 0x2004) {
+            ppuBus.OAMWrite(OAMADDR, data);
+            OAMADDR++;
         }
         else if (address == 0x2006) {
             if (write_toggle == false) {
@@ -154,7 +166,7 @@ struct PPU {
 
         for (size_t y = 0; y < 8; y++) {
             for (size_t x = 0; x < 8; x++) {
-                uint8_t colorInd = ColorIndexLookup(paletteIndex, tile[y][x]);
+                uint8_t colorInd = ColorIndexLookupBackground(paletteIndex, tile[y][x]);
                 frameBuffer[row+y][col+x] = colorInd;
             }
         }
@@ -201,13 +213,53 @@ struct PPU {
         }
     }
 
-    uint8_t ColorIndexLookup(uint8_t palette, uint8_t pixelValue) { // lookup color index byte from palette ram
+    uint8_t ColorIndexLookupBackground(uint8_t palette, uint8_t pixelValue) { // lookup color index byte from palette ram
         if (pixelValue == 0) { // universal background color
             return ppuBus.Read(0x3F00);
         }
         else {
             return ppuBus.Read(0x3F00 + (palette*4) + pixelValue);
         }
+    }
+
+    uint8_t ColorIndexLookupSprite(uint8_t palette, uint8_t pixelValue) { // lookup color index byte from palette ram
+        if (pixelValue == 0) {
+            throw std::runtime_error("Can't return color. Sprite color index 0 is transparent");
+        }
+        else {
+            return ppuBus.Read(0x3F10 + (palette*4) + pixelValue);
+        }
+    }
+
+    void DrawSprite(uint8_t spriteNum) {
+
+        uint8_t base = spriteNum * 4;
+        uint8_t Y = ppuBus.OAMRead(base);
+        uint8_t tileId = ppuBus.OAMRead(base + 1);
+        uint8_t attribute = ppuBus.OAMRead(base + 2);
+        uint8_t X = ppuBus.OAMRead(base + 3);
+
+        uint8_t paletteIndex = attribute & 0x03;
+
+        uint16_t patternBaseAddress = 0x0000; // where the tiles are stored in CHR ROM
+        if ((PPUCTRL & (1 << 3)) > 0) {
+            patternBaseAddress = 0x1000;
+        }
+
+        uint16_t spriteTileAddress = patternBaseAddress + (tileId * 16);
+        auto tile = DecodeTile(spriteTileAddress);
+
+
+        for (size_t row = 0; row < 8; row++) { // theres a quirk for drawing sprites. we add one to Y since Y alone means the next scanline
+            for (size_t col = 0; col < 8; col++) {
+                uint8_t pixel_value = tile[row][col];
+                if (pixel_value != 0 && (Y+row+1) < 240 && (X+col) < 256) {
+                    uint8_t color = ColorIndexLookupSprite(paletteIndex, pixel_value);
+                    frameBuffer[Y+1+row][X+col] = color;
+                }
+            }
+        }
+
     }
 
 };

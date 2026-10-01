@@ -33,7 +33,7 @@ struct Bus {
         }
 
         else { // address outside space
-            throw std::runtime_error("Address outside range 0x0000-0xFFFF" + std::format("{:#X}\n", (int)Address));
+            throw std::runtime_error("Address outside range 0x0000-0xFFFF: " + std::format("{:#X}\n", (int)Address));
         }
 
     }
@@ -49,7 +49,15 @@ struct Bus {
             ppu.CPUWrite(0x2000 + (Address & 0x0007), Value);
         }
 
-        else if (Address >= 0x4000 && Address <= 0x401F) { // Audio Processing Units and Input/Output
+        else if (Address == 0x4014) { // OAM DMA (Direct Memory Access)
+            uint16_t start = Value << 8; // page in cpu internal ram
+            for (int i = 0x00; i <= 0xFF; i++) {
+                uint8_t value_to_copy = Read(start + i);
+                ppu.CPUWrite(0x2004, value_to_copy);
+            }
+        }
+
+        else if (Address >= 0x4000 && Address <= 0x4017) { // apu and i/o
         }
 
         else if (Address >= 0x4020) { // Cartridge
@@ -57,7 +65,7 @@ struct Bus {
         }
 
         else { // address outside space
-            throw std::runtime_error("Address outside range 0x0000-0xFFFF" + std::format("{:#X}\n", (int)Address));
+            throw std::runtime_error("Address outside range 0x0000-0xFFFF: " + std::format("{:#X}\n", (int)Address));
         }
     }
 
