@@ -248,37 +248,80 @@ struct PPU {
 
         uint8_t paletteIndex = attribute & 0x03;
 
-        uint16_t patternBaseAddress = 0x0000; // where the tiles are stored in CHR ROM
-        if ((PPUCTRL & (1 << 3)) > 0) {
-            patternBaseAddress = 0x1000;
-        }
+        bool spriteSize16 = (PPUCTRL & (1 << 5)) > 0;
 
-        uint16_t spriteTileAddress = patternBaseAddress + (tileId * 16);
-        auto tile = DecodeTile(spriteTileAddress);
+        if (spriteSize16) { // if sprite is 8x16 (two tiles, 32 bytes long)
+            uint16_t patternBaseAddress = 0x0000;
+            if ((tileId & 0x01) > 0) {
+                patternBaseAddress = 0x1000;
+            }
 
+            uint8_t topTileId = tileId & 0xFE;
+            uint8_t bottomTileId = topTileId + 1;
 
-        for (size_t row = 0; row < 8; row++) { // theres a quirk for drawing sprites. we add one to Y since Y alone means the next scanline
-            for (size_t col = 0; col < 8; col++) {
-                uint8_t sourceRow = row;
-                uint8_t sourceCol = col;
-                if (horizontal_flip) {
-                    sourceCol = 7 - sourceCol;
-                }
-                if (vertical_flip) {
-                    sourceRow = 7 - sourceRow;
-                }
-                uint8_t pixel_value = tile[sourceRow][sourceCol];
-                if (pixel_value != 0 && (Y+row+1) < 240 && (X+col) < 256) {
-                    if (backgroundPriority && backgroundOpaque[Y+1+row][X+col]) {
-                            // don't overwrite background
+            auto bottomTile = DecodeTile(patternBaseAddress + (bottomTileId * 16));
+
+            auto combinedTile = DecodeTile(patternBaseAddress + (topTileId * 16));
+            combinedTile.insert(combinedTile.end(), bottomTile.begin(), bottomTile.end());
+
+            for (size_t row = 0; row < 16; row++) { // theres a quirk for drawing sprites. we add one to Y since Y alone means the next scanline
+                for (size_t col = 0; col < 8; col++) {
+                    uint8_t sourceRow = row;
+                    uint8_t sourceCol = col;
+                    if (horizontal_flip) {
+                        sourceCol = 15 - sourceCol;
                     }
-                    else {
-                        uint8_t color = ColorIndexLookupSprite(paletteIndex, pixel_value);
-                        frameBuffer[Y+1+row][X+col] = color;
+                    if (vertical_flip) {
+                        sourceRow = 15 - sourceRow;
+                    }
+                    uint8_t pixel_value = combinedTile[sourceRow][sourceCol];
+                    if (pixel_value != 0 && (Y+row+1) < 240 && (X+col) < 256) {
+                        if (backgroundPriority && backgroundOpaque[Y+1+row][X+col]) {
+                                // don't overwrite background
+                        }
+                        else {
+                            uint8_t color = ColorIndexLookupSprite(paletteIndex, pixel_value);
+                            frameBuffer[Y+1+row][X+col] = color;
+                        }
+                    }
+                }
+            }
+
+        }
+        else {
+            uint16_t patternBaseAddress = 0x0000; // where the tiles are stored in CHR ROM
+            if ((PPUCTRL & (1 << 3)) > 0) {
+                patternBaseAddress = 0x1000;
+            }
+
+            uint16_t spriteTileAddress = patternBaseAddress + (tileId * 16);
+            auto tile = DecodeTile(spriteTileAddress);
+
+
+            for (size_t row = 0; row < 8; row++) { // theres a quirk for drawing sprites. we add one to Y since Y alone means the next scanline
+                for (size_t col = 0; col < 8; col++) {
+                    uint8_t sourceRow = row;
+                    uint8_t sourceCol = col;
+                    if (horizontal_flip) {
+                        sourceCol = 7 - sourceCol;
+                    }
+                    if (vertical_flip) {
+                        sourceRow = 7 - sourceRow;
+                    }
+                    uint8_t pixel_value = tile[sourceRow][sourceCol];
+                    if (pixel_value != 0 && (Y+row+1) < 240 && (X+col) < 256) {
+                        if (backgroundPriority && backgroundOpaque[Y+1+row][X+col]) {
+                                // don't overwrite background
+                        }
+                        else {
+                            uint8_t color = ColorIndexLookupSprite(paletteIndex, pixel_value);
+                            frameBuffer[Y+1+row][X+col] = color;
+                        }
                     }
                 }
             }
         }
+
 
     }
 
