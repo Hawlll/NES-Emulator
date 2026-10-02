@@ -128,6 +128,7 @@ struct PPU {
 
         else if (scanline == 261 && dots == 1) { // in Prerender
             PPUSTATUS &= 0b01111111;
+            ClearFrame();
         }
 
         dots++;
@@ -364,6 +365,17 @@ struct PPU {
 
 
 
+    }
+
+    void ClearFrame() {
+        uint8_t universal_color = ppuBus.Read(0x3F00);
+
+        for (size_t row = 0; row < 240; row++) {
+            for (size_t col = 0; col < 256; col++) {
+                frameBuffer[row][col] = universal_color;
+                backgroundOpaque[row][col] = false;
+            }
+        }
     }
 
 };

@@ -22,7 +22,7 @@ int main()
 
     NES nes(cpu, ppu, bus);
 
-    cart.Load("rom_tests/sprite_8x16_flip_test.nes");
+    cart.Load("rom_tests/nes_palette_color_test.nes");
 
     cpu.Reset(bus);
 //
