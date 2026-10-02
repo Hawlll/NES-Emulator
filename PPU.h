@@ -269,7 +269,7 @@ struct PPU {
                     uint8_t sourceRow = row;
                     uint8_t sourceCol = col;
                     if (horizontal_flip) {
-                        sourceCol = 15 - sourceCol;
+                        sourceCol = 7 - sourceCol;
                     }
                     if (vertical_flip) {
                         sourceRow = 15 - sourceRow;
