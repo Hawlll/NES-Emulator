@@ -167,9 +167,22 @@ struct PPU {
 
         for (size_t y = 0; y < 8; y++) {
             for (size_t x = 0; x < 8; x++) {
-                uint8_t colorInd = ColorIndexLookupBackground(paletteIndex, tile[y][x]);
-                frameBuffer[row+y][col+x] = colorInd;
-                backgroundOpaque[row+y][col+x] = (tile[y][x] != 0);
+                if ((PPUMASK & (1 << 1)) > 0) { // should render leftmost 8 pixels
+                    uint8_t colorInd = ColorIndexLookupBackground(paletteIndex, tile[y][x]);
+                    frameBuffer[row+y][col+x] = colorInd;
+                    backgroundOpaque[row+y][col+x] = (tile[y][x] != 0);
+                }
+                else {
+                    if (col + x < 8) {
+                        frameBuffer[row+y][col+x] = ppuBus.Read(0x3F00);
+                        backgroundOpaque[row+y][col+x] = false;
+                    }
+                    else {
+                        uint8_t colorInd = ColorIndexLookupBackground(paletteIndex, tile[y][x]);
+                        frameBuffer[row+y][col+x] = colorInd;
+                        backgroundOpaque[row+y][col+x] = (tile[y][x] != 0);
+                    }
+                }
             }
         }
 
@@ -178,17 +191,20 @@ struct PPU {
     void DrawNameTable(uint16_t Address) {
         // 30x32 screen. bytes stored sequentially. each byte stores tile id. position on screen is implied
         // goes through each position on the screen, fetches and decodes tile with tile ID, draws tile in frameBuffer
-        uint16_t patternBaseAddress = 0x0000; // where the tiles are stored in CHR ROM
+
+        if ((PPUMASK & (1 << 3)) > 0) { // is background render enabled
+            uint16_t patternBaseAddress = 0x0000; // where the tiles are stored in CHR ROM
                 if ((PPUCTRL & (1 << 4)) > 0) {
                     patternBaseAddress = 0x1000;
                 }
 
-        for (size_t screenY = 0; screenY < 30; screenY++) {
-            for (size_t screenX = 0; screenX < 32; screenX++) {
-                uint8_t tileId = ppuBus.Read(Address + (screenY * 32) + screenX);
-                uint8_t paletteIndex = AttributeTableLookup(Address + 960, screenY, screenX);
-                auto decodedTile = DecodeTile(patternBaseAddress + (tileId*16));
-                DrawTile(decodedTile, screenY*8, screenX*8, paletteIndex);
+            for (size_t screenY = 0; screenY < 30; screenY++) {
+                for (size_t screenX = 0; screenX < 32; screenX++) {
+                    uint8_t tileId = ppuBus.Read(Address + (screenY * 32) + screenX);
+                    uint8_t paletteIndex = AttributeTableLookup(Address + 960, screenY, screenX);
+                    auto decodedTile = DecodeTile(patternBaseAddress + (tileId*16));
+                    DrawTile(decodedTile, screenY*8, screenX*8, paletteIndex);
+                }
             }
         }
     }
@@ -235,92 +251,117 @@ struct PPU {
 
     void DrawSprite(uint8_t spriteNum) {
 
-        uint8_t base = spriteNum * 4;
-        uint16_t Y = ppuBus.OAMRead(base);
-        uint8_t tileId = ppuBus.OAMRead(base + 1);
-        uint8_t attribute = ppuBus.OAMRead(base + 2);
-        uint16_t X = ppuBus.OAMRead(base + 3);
+        if ((PPUMASK & (1 << 4)) > 0) { // is sprite render enabled
+            uint8_t base = spriteNum * 4;
+            uint16_t Y = ppuBus.OAMRead(base);
+            uint8_t tileId = ppuBus.OAMRead(base + 1);
+            uint8_t attribute = ppuBus.OAMRead(base + 2);
+            uint16_t X = ppuBus.OAMRead(base + 3);
 
-        bool horizontal_flip = (attribute & (1 << 6)) > 0;
-        bool vertical_flip = (attribute & (1 << 7)) > 0;
+            bool horizontal_flip = (attribute & (1 << 6)) > 0;
+            bool vertical_flip = (attribute & (1 << 7)) > 0;
 
-        bool backgroundPriority = (attribute & (1 << 5)) > 0;
+            bool backgroundPriority = (attribute & (1 << 5)) > 0;
 
-        uint8_t paletteIndex = attribute & 0x03;
+            uint8_t paletteIndex = attribute & 0x03;
 
-        bool spriteSize16 = (PPUCTRL & (1 << 5)) > 0;
+            bool spriteSize16 = (PPUCTRL & (1 << 5)) > 0;
 
-        if (spriteSize16) { // if sprite is 8x16 (two tiles, 32 bytes long)
-            uint16_t patternBaseAddress = 0x0000;
-            if ((tileId & 0x01) > 0) {
-                patternBaseAddress = 0x1000;
-            }
+            if (spriteSize16) { // if sprite is 8x16 (two tiles, 32 bytes long)
+                uint16_t patternBaseAddress = 0x0000;
+                if ((tileId & 0x01) > 0) {
+                    patternBaseAddress = 0x1000;
+                }
 
-            uint8_t topTileId = tileId & 0xFE;
-            uint8_t bottomTileId = topTileId + 1;
+                uint8_t topTileId = tileId & 0xFE;
+                uint8_t bottomTileId = topTileId + 1;
 
-            auto bottomTile = DecodeTile(patternBaseAddress + (bottomTileId * 16));
+                auto bottomTile = DecodeTile(patternBaseAddress + (bottomTileId * 16));
 
-            auto combinedTile = DecodeTile(patternBaseAddress + (topTileId * 16));
-            combinedTile.insert(combinedTile.end(), bottomTile.begin(), bottomTile.end());
+                auto combinedTile = DecodeTile(patternBaseAddress + (topTileId * 16));
+                combinedTile.insert(combinedTile.end(), bottomTile.begin(), bottomTile.end());
 
-            for (size_t row = 0; row < 16; row++) { // theres a quirk for drawing sprites. we add one to Y since Y alone means the next scanline
-                for (size_t col = 0; col < 8; col++) {
-                    uint8_t sourceRow = row;
-                    uint8_t sourceCol = col;
-                    if (horizontal_flip) {
-                        sourceCol = 7 - sourceCol;
-                    }
-                    if (vertical_flip) {
-                        sourceRow = 15 - sourceRow;
-                    }
-                    uint8_t pixel_value = combinedTile[sourceRow][sourceCol];
-                    if (pixel_value != 0 && (Y+row+1) < 240 && (X+col) < 256) {
-                        if (backgroundPriority && backgroundOpaque[Y+1+row][X+col]) {
-                                // don't overwrite background
+                for (size_t row = 0; row < 16; row++) { // theres a quirk for drawing sprites. we add one to Y since Y alone means the next scanline
+                    for (size_t col = 0; col < 8; col++) {
+                        uint8_t sourceRow = row;
+                        uint8_t sourceCol = col;
+                        if (horizontal_flip) {
+                            sourceCol = 7 - sourceCol;
                         }
-                        else {
-                            uint8_t color = ColorIndexLookupSprite(paletteIndex, pixel_value);
-                            frameBuffer[Y+1+row][X+col] = color;
+                        if (vertical_flip) {
+                            sourceRow = 15 - sourceRow;
+                        }
+                        uint8_t pixel_value = combinedTile[sourceRow][sourceCol];
+                        if (pixel_value != 0 && (Y+row+1) < 240 && (X+col) < 256) {
+                            if (backgroundPriority && backgroundOpaque[Y+1+row][X+col]) {
+                                    // don't overwrite background
+                            }
+                            else {
+                                if ((PPUMASK & (1 << 2)) > 0) { // should render sprite at leftmost 8 pixels
+                                    uint8_t color = ColorIndexLookupSprite(paletteIndex, pixel_value);
+                                    frameBuffer[Y+1+row][X+col] = color;
+                                }
+                                else {
+                                    if (col + X < 8) {
+                                        // don't render sprite
+                                    }
+                                    else {
+                                        uint8_t color = ColorIndexLookupSprite(paletteIndex, pixel_value);
+                                        frameBuffer[Y+1+row][X+col] = color;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+            }
+            else {
+                uint16_t patternBaseAddress = 0x0000; // where the tiles are stored in CHR ROM
+                if ((PPUCTRL & (1 << 3)) > 0) {
+                    patternBaseAddress = 0x1000;
+                }
+
+                uint16_t spriteTileAddress = patternBaseAddress + (tileId * 16);
+                auto tile = DecodeTile(spriteTileAddress);
+
+
+                for (size_t row = 0; row < 8; row++) { // theres a quirk for drawing sprites. we add one to Y since Y alone means the next scanline
+                    for (size_t col = 0; col < 8; col++) {
+                        uint8_t sourceRow = row;
+                        uint8_t sourceCol = col;
+                        if (horizontal_flip) {
+                            sourceCol = 7 - sourceCol;
+                        }
+                        if (vertical_flip) {
+                            sourceRow = 7 - sourceRow;
+                        }
+                        uint8_t pixel_value = tile[sourceRow][sourceCol];
+                        if (pixel_value != 0 && (Y+row+1) < 240 && (X+col) < 256) {
+                            if (backgroundPriority && backgroundOpaque[Y+1+row][X+col]) {
+                                    // don't overwrite background
+                            }
+                            else {
+                                if ((PPUMASK & (1 << 2)) > 0) { // should render sprite at leftmost 8 pixels
+                                    uint8_t color = ColorIndexLookupSprite(paletteIndex, pixel_value);
+                                    frameBuffer[Y+1+row][X+col] = color;
+                                }
+                                else {
+                                    if (col + X < 8) {
+                                        // don't render sprite
+                                    }
+                                    else {
+                                        uint8_t color = ColorIndexLookupSprite(paletteIndex, pixel_value);
+                                        frameBuffer[Y+1+row][X+col] = color;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
-
         }
-        else {
-            uint16_t patternBaseAddress = 0x0000; // where the tiles are stored in CHR ROM
-            if ((PPUCTRL & (1 << 3)) > 0) {
-                patternBaseAddress = 0x1000;
-            }
 
-            uint16_t spriteTileAddress = patternBaseAddress + (tileId * 16);
-            auto tile = DecodeTile(spriteTileAddress);
-
-
-            for (size_t row = 0; row < 8; row++) { // theres a quirk for drawing sprites. we add one to Y since Y alone means the next scanline
-                for (size_t col = 0; col < 8; col++) {
-                    uint8_t sourceRow = row;
-                    uint8_t sourceCol = col;
-                    if (horizontal_flip) {
-                        sourceCol = 7 - sourceCol;
-                    }
-                    if (vertical_flip) {
-                        sourceRow = 7 - sourceRow;
-                    }
-                    uint8_t pixel_value = tile[sourceRow][sourceCol];
-                    if (pixel_value != 0 && (Y+row+1) < 240 && (X+col) < 256) {
-                        if (backgroundPriority && backgroundOpaque[Y+1+row][X+col]) {
-                                // don't overwrite background
-                        }
-                        else {
-                            uint8_t color = ColorIndexLookupSprite(paletteIndex, pixel_value);
-                            frameBuffer[Y+1+row][X+col] = color;
-                        }
-                    }
-                }
-            }
-        }
 
 
     }
