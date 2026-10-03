@@ -22,7 +22,7 @@ int main()
 
     NES nes(cpu, ppu, bus);
 
-    cart.Load("rom_tests/nes_palette_color_test.nes");
+    cart.Load("rom_tests/ppu_dot_background_register_test.nes");
 
     cpu.Reset(bus);
 //
@@ -112,8 +112,6 @@ int main()
     for (int i = 0; i < 500000; i++) {
         nes.Clock();
     }
-
-    ppu.DrawNameTable(0x2000);
 
     for (int sprite = 4; sprite < 64; sprite++) { // change depending on ROM. This is to ensure unused sprites are off screen
         uint8_t base = sprite * 4;

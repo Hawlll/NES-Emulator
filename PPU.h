@@ -8,8 +8,8 @@ struct PPU {
     uint8_t PPUMASK = 0x00; // Rendering configuration register at 0x2001 (how to render)
     uint8_t PPUSTATUS = 0x00; // PPU status register at 0x2002 (status)
 
-    int scanline = 0; // step of screen
-    int dots = 0; // PPU cycles
+    uint16_t scanline = 0; // step of screen
+    uint16_t dots = 0; // PPU cycles
     uint16_t ppu_address = 0x0000; // address register (14 bit address space)
     uint8_t read_buffer = 0x00; // internal read buffer since reads from CPU are delayed
 
@@ -118,6 +118,20 @@ struct PPU {
 
     void Clock() {
 
+        if (scanline < 240 && (dots >= 1 && dots <= 256)) {
+            if ((PPUMASK & (1 << 3)) > 0) { // is background render enabled
+                if (((PPUMASK & (1 << 1)) == 0) && (dots-1 < 8)) { // don't render for leftmost 8 pixels
+                    // don't render pixel
+                }
+                else {
+                    DrawBGPixel(0x2000, dots, scanline);
+                }
+
+
+            }
+
+        }
+
         if (scanline == 241 && dots == 1) { // in VBlank
             PPUSTATUS |= 0b10000000;
 
@@ -188,6 +202,31 @@ struct PPU {
         }
 
     }
+    void DrawBGPixel(uint16_t Address, uint16_t dots, uint16_t scanline) {
+
+        uint16_t screenY = scanline;
+        uint16_t screenX = dots - 1;
+
+        uint8_t tileRow = screenY / 8;
+        uint8_t tileCol = screenX / 8;
+
+        uint8_t localX = screenX % 8;
+        uint8_t localY = screenY % 8;
+
+        uint16_t patternBaseAddress = 0x0000;
+        if ((PPUCTRL & (1 << 4)) > 0) {
+            patternBaseAddress = 0x1000;
+        }
+        uint8_t tileId = ppuBus.Read(Address + (tileRow * 32) + tileCol);
+        uint8_t paletteIndex = AttributeTableLookup(Address + 960, tileRow, tileCol);
+        auto decodedTile = DecodeTile(patternBaseAddress + (tileId*16));
+        uint8_t colorInd = ColorIndexLookupBackground(paletteIndex, decodedTile[localY][localX]);
+        frameBuffer[screenY][screenX] = colorInd;
+        backgroundOpaque[screenY][screenX] = (decodedTile[localY][localX] != 0);
+
+    }
+
+    void DrawSpritePixel(){}
 
     void DrawNameTable(uint16_t Address) {
         // 30x32 screen. bytes stored sequentially. each byte stores tile id. position on screen is implied
