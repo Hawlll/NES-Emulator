@@ -119,18 +119,38 @@ struct PPU {
     void Clock() {
 
         if (scanline < 240 && (dots >= 1 && dots <= 256)) {
-            if ((PPUMASK & (1 << 3)) > 0) { // is background render enabled
-                if (((PPUMASK & (1 << 1)) == 0) && (dots-1 < 8)) { // don't render for leftmost 8 pixels
+                //background
+                if ((PPUMASK & (1 << 3)) > 0) { // is background render enabled
+                    uint16_t baseNameTableAddr = 0x2000;
+                    uint8_t addrSelection = PPUCTRL & 0x03;
+                    if (addrSelection == 0x00) {}
+                    else if (addrSelection == 0x01) {baseNameTableAddr = 0x2400;}
+                    else if (addrSelection == 0x02) {baseNameTableAddr = 0x2800;}
+                    else {baseNameTableAddr = 0x2C00;}
+                    if (((PPUMASK & (1 << 1)) == 0) && (dots-1 < 8)) { // don't render for leftmost 8 pixels
                     // don't render pixel
-                }
-                else {
-                    DrawBGPixel(0x2000, dots, scanline);
-                }
+                    }
+                    else {
+                        DrawBGPixel(baseNameTableAddr, dots, scanline);
+                    }
 
+                }
+                //sprite
+                if ((PPUMASK & (1 << 4)) > 0) { // is sprite render enabled
+                    if ((PPUMASK & (1 << 2)) > 0) { // should render sprite at leftmost 8 pixels
+                        DrawSpritePixel(dots, scanline);
+                    }
+                    else {
+                        if (dots-1 < 8) {
+                            // don't render sprite pixel
+                        }
+                        else {
+                            DrawSpritePixel(dots, scanline);
+                        }
+                    }
+                }
 
             }
-
-        }
 
         if (scanline == 241 && dots == 1) { // in VBlank
             PPUSTATUS |= 0b10000000;
@@ -226,7 +246,108 @@ struct PPU {
 
     }
 
-    void DrawSpritePixel(){}
+    auto DetermineSpriteNum(uint16_t screenX, uint16_t screenY) {
+        std::vector<uint16_t> sprites;
+        for (uint16_t i = 0; i < 64; i++) {
+            uint16_t Y = ppuBus.OAMRead(i*4);
+            uint16_t X = ppuBus.OAMRead((i*4)+3);
+            bool sprite16Size = (PPUCTRL & (1 << 5)) > 0;
+            if (sprite16Size) {
+                if ((screenY >= Y+1 && screenY < Y+17) && (screenX >= X && screenX < X+8)) {
+                    sprites.push_back(i);
+                }
+            }
+            else {
+                if ((screenY >= Y+1 && screenY < Y+9) && (screenX >= X && screenX < X+8)) {
+                    sprites.push_back(i);
+                }
+            }
+        }
+        return sprites; // sprite not found at screen location
+    }
+
+    void DrawSpritePixel(uint16_t dots, uint16_t scanline){
+
+        uint16_t screenX = dots - 1;
+        uint16_t screenY = scanline;
+        auto spriteNums = DetermineSpriteNum(screenX, screenY);
+        for (uint16_t spriteNum : spriteNums) {
+
+            uint16_t base = spriteNum * 4;
+            uint16_t Y = ppuBus.OAMRead(base);
+            uint8_t tileId = ppuBus.OAMRead(base + 1);
+            uint8_t attribute = ppuBus.OAMRead(base + 2);
+            uint16_t X = ppuBus.OAMRead(base + 3);
+
+            uint8_t localX = screenX - X;
+            uint8_t localY = screenY - (Y + 1);
+
+            bool horizontal_flip = (attribute & (1 << 6)) > 0;
+            bool vertical_flip = (attribute & (1 << 7)) > 0;
+
+            uint8_t paletteIndex = attribute & 0x03;
+            bool backgroundPriority = (attribute & (1 << 5)) > 0;
+
+
+            bool spriteSize16 = (PPUCTRL & (1 << 5)) > 0;
+            if (spriteSize16) { // if sprite is 8x16 (two tiles, 32 bytes long)
+                uint16_t patternBaseAddress = 0x0000;
+                if ((tileId & 0x01) > 0) {
+                    patternBaseAddress = 0x1000;
+                }
+
+                uint8_t topTileId = tileId & 0xFE;
+                uint8_t bottomTileId = topTileId + 1;
+
+                auto bottomTile = DecodeTile(patternBaseAddress + (bottomTileId * 16));
+
+                auto combinedTile = DecodeTile(patternBaseAddress + (topTileId * 16));
+                combinedTile.insert(combinedTile.end(), bottomTile.begin(), bottomTile.end());
+                if (horizontal_flip) {
+                    localX = 7 - localX;
+                }
+                if (vertical_flip) {
+                    localY = 15 - localY;
+                }
+                uint8_t pixel_value = combinedTile[localY][localX];
+                if (pixel_value == 0) { // sprite pixel is transparent or opaque background with priority
+                    continue;
+                }
+                if (backgroundPriority && backgroundOpaque[screenY][screenX]) {
+                    return; // this is winning sprite, but background covers it
+                }
+                uint8_t color = ColorIndexLookupSprite(paletteIndex, pixel_value);
+                frameBuffer[screenY][screenX] = color;
+                return; // stop since we found first non-transparent sprite pixel
+
+                }
+            else {
+                uint16_t patternBaseAddress = 0x0000; // where the tiles are stored in CHR ROM
+                if ((PPUCTRL & (1 << 3)) > 0) {
+                    patternBaseAddress = 0x1000;
+                }
+
+                uint16_t spriteTileAddress = patternBaseAddress + (tileId * 16);
+                auto tile = DecodeTile(spriteTileAddress);
+                if (horizontal_flip) {
+                    localX = 7 - localX;
+                }
+                if (vertical_flip) {
+                    localY = 7 - localY;
+                }
+                uint8_t pixel_value = tile[localY][localX];
+                if (pixel_value == 0) { // sprite pixel is transparent or opaque background with priority
+                    continue;
+                }
+                if (backgroundPriority && backgroundOpaque[screenY][screenX]) {
+                    return; // this is winning sprite, but background covers it
+                }
+                uint8_t color = ColorIndexLookupSprite(paletteIndex, pixel_value);
+                frameBuffer[screenY][screenX] = color;
+                return; // stop since we found first non-transparent sprite pixel
+            }
+        }
+    }
 
     void DrawNameTable(uint16_t Address) {
         // 30x32 screen. bytes stored sequentially. each byte stores tile id. position on screen is implied
