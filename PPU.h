@@ -161,7 +161,7 @@ struct PPU {
         }
 
         else if (scanline == 261 && dots == 1) { // in Prerender
-            PPUSTATUS &= 0b01111111;
+            PPUSTATUS &= 0b00111111; // clear vblank and sprite 0 hit
             ClearFrame();
         }
 
@@ -313,6 +313,9 @@ struct PPU {
                 if (pixel_value == 0) { // sprite pixel is transparent or opaque background with priority
                     continue;
                 }
+                if (spriteNum == 0 && backgroundOpaque[screenY][screenX]) { // sprite 0 hit
+                    PPUSTATUS |= (1 << 6);
+                }
                 if (backgroundPriority && backgroundOpaque[screenY][screenX]) {
                     return; // this is winning sprite, but background covers it
                 }
@@ -338,6 +341,9 @@ struct PPU {
                 uint8_t pixel_value = tile[localY][localX];
                 if (pixel_value == 0) { // sprite pixel is transparent or opaque background with priority
                     continue;
+                }
+                if (spriteNum == 0 && backgroundOpaque[screenY][screenX]) { // sprite 0 hit
+                    PPUSTATUS |= (1 << 6);
                 }
                 if (backgroundPriority && backgroundOpaque[screenY][screenX]) {
                     return; // this is winning sprite, but background covers it
