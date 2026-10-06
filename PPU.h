@@ -8,6 +8,9 @@ struct PPU {
     uint8_t PPUMASK = 0x00; // Rendering configuration register at 0x2001 (how to render)
     uint8_t PPUSTATUS = 0x00; // PPU status register at 0x2002 (status)
 
+    uint8_t scrollX = 0x00;
+    uint8_t scrollY = 0x00;
+
     uint16_t scanline = 0; // step of screen
     uint16_t dots = 0; // PPU cycles
     uint16_t ppu_address = 0x0000; // address register (14 bit address space)
@@ -89,6 +92,15 @@ struct PPU {
         else if (address == 0x2004) {
             ppuBus.OAMWrite(OAMADDR, data);
             OAMADDR++;
+        }
+        else if (address == 0x2005) { //write to scroll registers
+            if (write_toggle == false) {
+                scrollX = data;
+            }
+            else {
+                scrollY = data;
+            }
+            write_toggle = !write_toggle;
         }
         else if (address == 0x2006) {
             if (write_toggle == false) {
@@ -227,11 +239,25 @@ struct PPU {
         uint16_t screenY = scanline;
         uint16_t screenX = dots - 1;
 
-        uint8_t tileRow = screenY / 8;
-        uint8_t tileCol = screenX / 8;
+        uint16_t backgroundX = screenX + scrollX;
+        uint16_t backgroundY = screenY + scrollY;
 
-        uint8_t localX = screenX % 8;
-        uint8_t localY = screenY % 8;
+        if (backgroundX >= 256) { // horizontal cross
+            Address ^= (1 << 10);
+        }
+
+        if (backgroundY >= 240) { // vertical cross
+            Address ^= (1 << 11);
+        }
+
+        backgroundX %= 256;
+        backgroundY %= 240;
+
+        uint8_t tileRow = backgroundY / 8;
+        uint8_t tileCol = backgroundX / 8;
+
+        uint8_t localX = backgroundX % 8;
+        uint8_t localY = backgroundY % 8;
 
         uint16_t patternBaseAddress = 0x0000;
         if ((PPUCTRL & (1 << 4)) > 0) {

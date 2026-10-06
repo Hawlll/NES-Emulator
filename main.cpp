@@ -22,7 +22,7 @@ int main()
 
     NES nes(cpu, ppu, bus);
 
-    cart.Load("rom_tests/sprite0_hit_cpu_poll_test.nes");
+    cart.Load("rom_tests/ppu_scroll_test.nes");
 
     cpu.Reset(bus);
 //
@@ -113,10 +113,10 @@ int main()
         nes.Clock();
     }
 
-    for (int sprite = 4; sprite < 64; sprite++) { // change depending on ROM. This is to ensure unused sprites are off screen
-        uint8_t base = sprite * 4;
-        ppuBus.OAMWrite(base, 0xFF);
-    }
+//    for (int sprite = 4; sprite < 64; sprite++) { // change depending on ROM. This is to ensure unused sprites are off screen
+//        uint8_t base = sprite * 4;
+//        ppuBus.OAMWrite(base, 0xFF);
+//    }
 
     for (int sprite = 63; sprite >= 0; sprite--) {
         ppu.DrawSprite(sprite);

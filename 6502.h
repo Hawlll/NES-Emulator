@@ -158,6 +158,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xE0: // CPX (Compare X) - compare X value with immediate
                 return 2;
                 break;
+            case 0xC0: // CPY (Compare Y) - compare Y with immediate
+                return 2;
+                break;
             case 0xEE: // INC (Increment Memory absolute addressing mode) - Increments value at absolute address by 1
                 return 6;
                 break;
@@ -749,6 +752,25 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+
+            case 0xC0: // CPY (Compare Y) - compare Y with immediate
+
+                switch (cycles) {
+                    case 1: {
+                        uint8_t imm = Fetch(PC, bus);
+                        uint8_t result = Y - imm;
+
+                        SetCFLAG(Y >= imm);
+                        SetNFLAG(result);
+                        SetZFLAG(result);
+                        PC++;
+                        break;
+                    }
+                    default:
+                        break;
+
+                }
+                break;
 
             case 0xE8: // INX (Increment X) - Add one to the X register
 
