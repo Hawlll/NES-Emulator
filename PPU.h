@@ -25,7 +25,7 @@ struct PPU {
 
     uint8_t OAMADDR = 0x00; // register for cpu to access OAM
 
-    std::vector<std::vector<uint8_t>> frameBuffer{240, std::vector<uint8_t>(256, 0)}; // stores decoded tiles
+    std::vector<std::vector<uint8_t>> frameBuffer{240, std::vector<uint8_t>(256, 0)}; // stores rendered frame
     std::vector<std::vector<bool>> backgroundOpaque{240, std::vector<bool>(256, false)}; // stores whether background is universal background color (CHR pixel value was 0)
 
     PPUBus& ppuBus;
@@ -591,5 +591,71 @@ struct PPU {
             }
         }
     }
+
+    void IncrementCoarseX() { // handle horizontal crossing and updating nametable select bit in
+        uint8_t coarseX = (v & 0x001F);
+        if (coarseX == 0x1F) { // horizontal cross
+            v ^= (1 << 10);
+            v &= 0xFFE0;
+
+        }
+        else {
+            v++;
+        }
+
+    }
+
+    void IncrementCoarseY() {
+        uint8_t coarseY = (v & 0x03E0) >> 5;
+        v &= 0xFC1F;
+
+        if (coarseY == 0x1D) {
+            v ^= (1 << 11);
+        }
+        else if (coarseY == 0x1E) {
+            coarseY++;
+            v |= (coarseY << 5);
+        }
+        else if (coarseY == 0x1F) {
+            // coarseY is set to 0, don't cross nametable
+        }
+        else {
+            coarseY++;
+            v |= (coarseY << 5);
+        }
+    }
+
+    void IncrementFineY() {
+        uint8_t fineY = (v & 0x7000) >> 12;
+        v &= 0x0FFF;
+
+        if (fineY == 0x07) {
+            IncrementCoarseY();
+        }
+        else {
+            fineY++;
+            v |= (fineY << 12);
+        }
+    }
+
+    void CopyHorizontal() { // copies coarseX and horiontal nametable from t => v
+        uint8_t coarseX = (t & 0x001F);
+        uint16_t horizontalNametableInd = (t & (1 << 10));
+        v &= 0xF7E0;
+        v |= coarseX;
+        v |= horizontalNametableInd;
+    }
+
+    void CopyVertical() { // copies coarseY, vertical nametable, and fineY from t => v
+        uint8_t coarseY = (t & 0x03E0) >> 5;
+        uint8_t fineY = (t & 0x7000) >> 12;
+        uint16_t verticalNametableInd = (t & (1 << 11));
+        v &= 0x041F;
+        v |= (coarseY << 5);
+        v |= (fineY << 12);
+        v |= verticalNametableInd;
+    }
+
+
 
 };
