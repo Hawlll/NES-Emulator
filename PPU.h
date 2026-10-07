@@ -11,13 +11,17 @@ struct PPU {
     uint8_t scrollX = 0x00;
     uint8_t scrollY = 0x00;
 
+    // internal registers
+    uint16_t v = 0x0000; // current vram address register (current position in background and is ppu_address)
+    uint16_t t = 0x0000; // temporary vram address register (builds v during rendering)
+    uint8_t x = 0x00; // fine x regsiter
+    bool w = false; // write toggle register
+
     uint16_t scanline = 0; // step of screen
     uint16_t dots = 0; // PPU cycles
-    uint16_t ppu_address = 0x0000; // address register (14 bit address space)
     uint8_t read_buffer = 0x00; // internal read buffer since reads from CPU are delayed
 
     bool send_NMI = false; // send NMI to cpu if true
-    bool write_toggle = false; // write order of PPU address (false=expecting first write)
 
     uint8_t OAMADDR = 0x00; // register for cpu to access OAM
 
@@ -42,7 +46,7 @@ struct PPU {
 
             uint8_t prev = PPUSTATUS;
             PPUSTATUS &= 0b01111111; // clear VBlank flag
-            write_toggle = false;
+            w = false;
             return prev;
         }
         else if (address == 0x2004) { // OAM
@@ -51,22 +55,22 @@ struct PPU {
         else if (address == 0x2007) {
 
             uint8_t ret_val = 0x00;
-            if (ppu_address >= 0x3F00) { // palette ram
-                ret_val = ppuBus.Read(ppu_address);
-                read_buffer = ppuBus.Read(ppu_address - 0x1000); // corresponding value in nametable
+            if (v >= 0x3F00) { // palette ram
+                ret_val = ppuBus.Read(v);
+                read_buffer = ppuBus.Read(v - 0x1000); // corresponding value in nametable
             }
             else {
                 ret_val = read_buffer;
-                read_buffer = ppuBus.Read(ppu_address);
+                read_buffer = ppuBus.Read(v);
             }
 
             if ((PPUCTRL & 0x04) > 0) { // if vram address increment is set
-                ppu_address += 32;
+                v += 32;
             }
             else {
-                ppu_address += 1;
+                v += 1;
             }
-            ppu_address &= 0x3FFF;
+            v &= 0x3FFF;
             return ret_val;
 
         }
@@ -82,6 +86,9 @@ struct PPU {
     void CPUWrite(uint16_t address, uint8_t data) {
         if (address == 0x2000) {
             PPUCTRL = data;
+            uint8_t nametableSelect = data & 0x03;
+            t &= 0xF3FF; // clear bits 10-11 to store nametable select
+            t |= (nametableSelect << 10);
         }
         else if (address ==  0x2001) {
             PPUMASK = data;
@@ -94,33 +101,48 @@ struct PPU {
             OAMADDR++;
         }
         else if (address == 0x2005) { //write to scroll registers
-            if (write_toggle == false) {
-                scrollX = data;
+            if (w == false) {
+                uint8_t coarseX = data / 8;
+                uint8_t fineX = data % 8;
+
+                t &= 0xFFE0; // clear lower 5 bits for coarseX
+                t |= coarseX;
+
+                x = fineX;
             }
             else {
-                scrollY = data;
+                uint8_t coarseY = data / 8;
+                uint8_t fineY = data % 8;
+
+                t &= 0x0C1F; // clear bits 5-9 for coarseY and bits 12-14 for fineY
+                t |= (coarseY << 5);
+                t |= (fineY << 12);
+
             }
-            write_toggle = !write_toggle;
+            w = !w;
         }
         else if (address == 0x2006) {
-            if (write_toggle == false) {
-                ppu_address = (data & 0x3F) << 8;
+            if (w == false) {
+                t &= 0x00FF; // clear upper 8 bits
+                t |= (data & 0x3F) << 8;
             }
             else {
-                ppu_address |= data;
+                t &= 0xFF00;
+                t |= data;
+                v = t;
             }
-            write_toggle = !write_toggle;
+            w = !w;
         }
         else if (address == 0x2007) {
 
-            ppuBus.Write(ppu_address, data);
+            ppuBus.Write(v, data);
             if ((PPUCTRL & 0x04) > 0) { // if vram address increment is set
-                ppu_address += 32;
+                v += 32;
             }
             else {
-                ppu_address += 1;
+                v += 1;
             }
-            ppu_address &= 0x3FFF;
+            v &= 0x3FFF;
         }
         else {
             std::cout << std::format("Writing to {:X}", (int)address) << std::endl;
