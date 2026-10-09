@@ -17,8 +17,8 @@ struct PPU {
     uint8_t x = 0x00; // fine x regsiter
     bool w = false; // write toggle register
 
-    uint16_t scanline = 0; // step of screen
-    uint16_t dots = 0; // PPU cycles
+    uint16_t scanline = 0; // step of screen (0-261)
+    uint16_t dots = 0; // PPU cycles (0-340)
     uint8_t read_buffer = 0x00; // internal read buffer since reads from CPU are delayed
 
     bool send_NMI = false; // send NMI to cpu if true
@@ -151,6 +151,21 @@ struct PPU {
     }
 
     void Clock() {
+
+        if (((PPUMASK & 0x18) > 0) && (scanline < 240 || scanline == 261)) {
+            if (dots >= 1 && dots <= 256 && dots % 8 == 0) { // next tile horizontally
+                IncrementCoarseX();
+            }
+            if (dots == 256) { // next row
+                IncrementFineY();
+            }
+            else if (dots == 257) { // restore starting X with scroll offset from t
+                CopyHorizontal();
+            }
+            else if ((scanline == 261) && (dots >= 280 && dots <= 304)) { // prerender
+                CopyVertical();
+            }
+        }
 
         if (scanline < 240 && (dots >= 1 && dots <= 256)) {
                 //background
@@ -638,7 +653,7 @@ struct PPU {
         }
     }
 
-    void CopyHorizontal() { // copies coarseX and horiontal nametable from t => v
+    void CopyHorizontal() { // copies coarseX and horizontal nametable from t => v
         uint8_t coarseX = (t & 0x001F);
         uint16_t horizontalNametableInd = (t & (1 << 10));
         v &= 0xF7E0;
@@ -655,7 +670,4 @@ struct PPU {
         v |= (fineY << 12);
         v |= verticalNametableInd;
     }
-
-
-
 };
