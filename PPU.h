@@ -8,14 +8,14 @@ struct PPU {
     uint8_t PPUMASK = 0x00; // Rendering configuration register at 0x2001 (how to render)
     uint8_t PPUSTATUS = 0x00; // PPU status register at 0x2002 (status)
 
-    uint8_t scrollX = 0x00;
-    uint8_t scrollY = 0x00;
-
     // internal registers
     uint16_t v = 0x0000; // current vram address register (current position in background and is ppu_address)
     uint16_t t = 0x0000; // temporary vram address register (builds v during rendering)
     uint8_t x = 0x00; // fine x regsiter
     bool w = false; // write toggle register
+
+    uint16_t backgroundShiftLow = 0x0000;
+    uint16_t backgroundShiftHigh = 0x0000;
 
     uint16_t scanline = 0; // step of screen (0-261)
     uint16_t dots = 0; // PPU cycles (0-340)
@@ -165,36 +165,33 @@ struct PPU {
             else if ((scanline == 261) && (dots >= 280 && dots <= 304)) { // prerender
                 CopyVertical();
             }
+            else if (dots == 328 || dots == 336) { // prefetch two tiles for next scanline
+                IncrementCoarseX();
+            }
         }
 
         if (scanline < 240 && (dots >= 1 && dots <= 256)) {
                 //background
                 if ((PPUMASK & (1 << 3)) > 0) { // is background render enabled
-                    uint16_t baseNameTableAddr = 0x2000;
-                    uint8_t addrSelection = PPUCTRL & 0x03;
-                    if (addrSelection == 0x00) {}
-                    else if (addrSelection == 0x01) {baseNameTableAddr = 0x2400;}
-                    else if (addrSelection == 0x02) {baseNameTableAddr = 0x2800;}
-                    else {baseNameTableAddr = 0x2C00;}
                     if (((PPUMASK & (1 << 1)) == 0) && (dots-1 < 8)) { // don't render for leftmost 8 pixels
                     // don't render pixel
                     }
                     else {
-                        DrawBGPixel(baseNameTableAddr, dots, scanline);
+                        DrawBGPixel();
                     }
 
                 }
                 //sprite
                 if ((PPUMASK & (1 << 4)) > 0) { // is sprite render enabled
                     if ((PPUMASK & (1 << 2)) > 0) { // should render sprite at leftmost 8 pixels
-                        DrawSpritePixel(dots, scanline);
+                        DrawSpritePixel();
                     }
                     else {
                         if (dots-1 < 8) {
                             // don't render sprite pixel
                         }
                         else {
-                            DrawSpritePixel(dots, scanline);
+                            DrawSpritePixel();
                         }
                     }
                 }
@@ -271,41 +268,29 @@ struct PPU {
         }
 
     }
-    void DrawBGPixel(uint16_t Address, uint16_t dots, uint16_t scanline) {
+    void DrawBGPixel() { //not correct yet. fineX isn't used like this since its constant
+        // fineX is used for shift registers
+
+        uint8_t nametableSelect = (v >> 10) & 0x03;
+        uint16_t nametableAddress = 0x2000 + (0x0400 * nametableSelect);
 
         uint16_t screenY = scanline;
         uint16_t screenX = dots - 1;
 
-        uint16_t backgroundX = screenX + scrollX;
-        uint16_t backgroundY = screenY + scrollY;
-
-        if (backgroundX >= 256) { // horizontal cross
-            Address ^= (1 << 10);
-        }
-
-        if (backgroundY >= 240) { // vertical cross
-            Address ^= (1 << 11);
-        }
-
-        backgroundX %= 256;
-        backgroundY %= 240;
-
-        uint8_t tileRow = backgroundY / 8;
-        uint8_t tileCol = backgroundX / 8;
-
-        uint8_t localX = backgroundX % 8;
-        uint8_t localY = backgroundY % 8;
+        uint8_t coarseX = v & 0x001F;
+        uint8_t coarseY = (v & 0x03E0) >> 5;
+        uint8_t fineY = (v & 0x7000) >> 12;
 
         uint16_t patternBaseAddress = 0x0000;
         if ((PPUCTRL & (1 << 4)) > 0) {
             patternBaseAddress = 0x1000;
         }
-        uint8_t tileId = ppuBus.Read(Address + (tileRow * 32) + tileCol);
-        uint8_t paletteIndex = AttributeTableLookup(Address + 960, tileRow, tileCol);
+        uint8_t tileId = ppuBus.Read(nametableAddress + (coarseY * 32) + coarseX);
+        uint8_t paletteIndex = AttributeTableLookup(nametableAddress + 960, coarseY, coarseX);
         auto decodedTile = DecodeTile(patternBaseAddress + (tileId*16));
-        uint8_t colorInd = ColorIndexLookupBackground(paletteIndex, decodedTile[localY][localX]);
+        uint8_t colorInd = ColorIndexLookupBackground(paletteIndex, decodedTile[fineY][x]);
         frameBuffer[screenY][screenX] = colorInd;
-        backgroundOpaque[screenY][screenX] = (decodedTile[localY][localX] != 0);
+        backgroundOpaque[screenY][screenX] = (decodedTile[fineY][x] != 0);
 
     }
 
@@ -329,7 +314,7 @@ struct PPU {
         return sprites; // sprite not found at screen location
     }
 
-    void DrawSpritePixel(uint16_t dots, uint16_t scanline){
+    void DrawSpritePixel(){
 
         uint16_t screenX = dots - 1;
         uint16_t screenY = scanline;
