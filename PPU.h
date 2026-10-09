@@ -14,8 +14,23 @@ struct PPU {
     uint8_t x = 0x00; // fine x regsiter
     bool w = false; // write toggle register
 
-    uint16_t backgroundShiftLow = 0x0000;
-    uint16_t backgroundShiftHigh = 0x0000;
+    // register that store data before entering shift registers
+    uint8_t nextTileId = 0x00;
+    uint8_t nextTileAttribute = 0x00;
+    uint8_t nextTileLow = 0x00;
+    uint8_t nextTileHigh = 0x00;
+
+    // background shift regsiters
+
+    // tile rendering pipeline
+    uint16_t backgroundShiftPatternLow = 0x0000;
+    uint16_t backgroundShiftPatternHigh = 0x0000;
+
+    // palette selection pipeline
+    uint16_t backgroundShiftAttributeLow = 0x0000;
+    uint16_t backgroundShiftAttributeHigh = 0x0000;
+
+
 
     uint16_t scanline = 0; // step of screen (0-261)
     uint16_t dots = 0; // PPU cycles (0-340)
@@ -152,35 +167,59 @@ struct PPU {
 
     void Clock() {
 
-        if (((PPUMASK & 0x18) > 0) && (scanline < 240 || scanline == 261)) {
-            if (dots >= 1 && dots <= 256 && dots % 8 == 0) { // next tile horizontally
-                IncrementCoarseX();
+        if (((PPUMASK & 0x18) > 0) && (scanline < 240 || scanline == 261)) { // background/sprite rendering enabled, and visible or pre-render scanlines
+
+            if (scanline < 240 && dots >= 1 && dots <= 256 && (PPUMASK & 0x08) && ((PPUMASK & 0x02) || dots > 8)) {
+                DrawBGPixel();
             }
+
+            if ((dots >= 2 && dots <= 257) || (dots >= 322 && dots <= 337)) {
+                ShiftBackgroundRegisters();
+            }
+
+            if ((dots >= 1 && dots <= 256) || (dots >= 321 && dots <= 336)) { // visible or pre-render dots
+
+
+
+                switch (dots % 8) { // eight dot fetch sequence
+                    case 1:
+                        LoadBackgroundShiftRegisters();
+                        FetchNametableByte();
+                        break;
+                    case 3:
+                        FetchAttributeByte();
+                        break;
+                    case 5:
+                        FetchPatternLowByte();
+                        break;
+                    case 7:
+                        FetchPatternHighByte();
+                        break;
+                    case 0:
+                        IncrementCoarseX();
+                        break;
+                }
+
+            }
+
+
             if (dots == 256) { // next row
                 IncrementFineY();
             }
             else if (dots == 257) { // restore starting X with scroll offset from t
                 CopyHorizontal();
+                LoadBackgroundShiftRegisters();
             }
             else if ((scanline == 261) && (dots >= 280 && dots <= 304)) { // prerender
                 CopyVertical();
             }
-            else if (dots == 328 || dots == 336) { // prefetch two tiles for next scanline
-                IncrementCoarseX();
+
+            else if (dots == 337) {
+                LoadBackgroundShiftRegisters();
             }
         }
 
         if (scanline < 240 && (dots >= 1 && dots <= 256)) {
-                //background
-                if ((PPUMASK & (1 << 3)) > 0) { // is background render enabled
-                    if (((PPUMASK & (1 << 1)) == 0) && (dots-1 < 8)) { // don't render for leftmost 8 pixels
-                    // don't render pixel
-                    }
-                    else {
-                        DrawBGPixel();
-                    }
-
-                }
                 //sprite
                 if ((PPUMASK & (1 << 4)) > 0) { // is sprite render enabled
                     if ((PPUMASK & (1 << 2)) > 0) { // should render sprite at leftmost 8 pixels
@@ -268,29 +307,18 @@ struct PPU {
         }
 
     }
-    void DrawBGPixel() { //not correct yet. fineX isn't used like this since its constant
-        // fineX is used for shift registers
-
-        uint8_t nametableSelect = (v >> 10) & 0x03;
-        uint16_t nametableAddress = 0x2000 + (0x0400 * nametableSelect);
+    void DrawBGPixel() {
 
         uint16_t screenY = scanline;
         uint16_t screenX = dots - 1;
 
-        uint8_t coarseX = v & 0x001F;
-        uint8_t coarseY = (v & 0x03E0) >> 5;
-        uint8_t fineY = (v & 0x7000) >> 12;
+        uint8_t pixelValue = PullBackgroundPixel();
+        uint8_t paletteSelection = PullPaletteSelection();
 
-        uint16_t patternBaseAddress = 0x0000;
-        if ((PPUCTRL & (1 << 4)) > 0) {
-            patternBaseAddress = 0x1000;
-        }
-        uint8_t tileId = ppuBus.Read(nametableAddress + (coarseY * 32) + coarseX);
-        uint8_t paletteIndex = AttributeTableLookup(nametableAddress + 960, coarseY, coarseX);
-        auto decodedTile = DecodeTile(patternBaseAddress + (tileId*16));
-        uint8_t colorInd = ColorIndexLookupBackground(paletteIndex, decodedTile[fineY][x]);
+        uint8_t colorInd = ColorIndexLookupBackground(paletteSelection, pixelValue);
+
         frameBuffer[screenY][screenX] = colorInd;
-        backgroundOpaque[screenY][screenX] = (decodedTile[fineY][x] != 0);
+        backgroundOpaque[screenY][screenX] = (pixelValue != 0);
 
     }
 
@@ -402,6 +430,9 @@ struct PPU {
             }
         }
     }
+
+
+
 
     void DrawNameTable(uint16_t Address) {
         // 30x32 screen. bytes stored sequentially. each byte stores tile id. position on screen is implied
@@ -641,7 +672,7 @@ struct PPU {
     void CopyHorizontal() { // copies coarseX and horizontal nametable from t => v
         uint8_t coarseX = (t & 0x001F);
         uint16_t horizontalNametableInd = (t & (1 << 10));
-        v &= 0xF7E0;
+        v &= 0xFBE0;
         v |= coarseX;
         v |= horizontalNametableInd;
     }
@@ -654,5 +685,109 @@ struct PPU {
         v |= (coarseY << 5);
         v |= (fineY << 12);
         v |= verticalNametableInd;
+    }
+
+    void FetchNametableByte() {
+        uint8_t coarseY = (v & 0x03E0) >> 5;
+        uint8_t coarseX = (v & 0x001F);
+        uint8_t nametableSelect = (v >> 10) & 0x03;
+
+        uint16_t nametableByteAddress = 0x2000 + (0x0400 * nametableSelect) + (coarseY * 32) + coarseX;
+
+        nextTileId = ppuBus.Read(nametableByteAddress);
+    }
+
+    void FetchAttributeByte() {
+        uint8_t coarseY = (v & 0x03E0) >> 5;
+        uint8_t coarseX = (v & 0x001F);
+        uint8_t nametableSelect = (v >> 10) & 0x03;
+
+        uint16_t attributeByteAddress = 0x2000 + (0x0400 * nametableSelect) + 960 + ((coarseY / 4) * 8) + (coarseX / 4);
+        uint8_t attributeByte = ppuBus.Read(attributeByteAddress);
+
+        uint8_t quadY = coarseY % 4;
+        uint8_t quadX = coarseX % 4;
+
+        if (quadY < 2 && quadX < 2) { // top left
+            nextTileAttribute = (attributeByte & (1 << 1)) | (attributeByte & 0x01);
+        }
+        else if (quadY < 2 && quadX >= 2) { // top right
+            nextTileAttribute = ((attributeByte & (1 << 3)) >> 2) | ((attributeByte & (1 << 2)) >> 2);
+        }
+        else if (quadY >= 2 && quadX < 2) { // bottom left
+            nextTileAttribute = ((attributeByte & (1 << 5)) >> 4) | ((attributeByte & (1 << 4)) >> 4);
+        }
+        else { // bottom right
+            nextTileAttribute = ((attributeByte & (1 << 7)) >> 6) | ((attributeByte & (1 << 6)) >> 6);
+        }
+    }
+
+    void FetchPatternLowByte() {
+
+        uint8_t fineY = (v & 0x7000) >> 12;
+
+        uint16_t patternBaseAddress = 0x0000;
+        if ((PPUCTRL & (1 << 4)) > 0) {
+            patternBaseAddress = 0x1000;
+        }
+        uint16_t patternAddress = patternBaseAddress + (nextTileId * 16) + fineY;
+
+        nextTileLow = ppuBus.Read(patternAddress);
+
+    }
+
+    void FetchPatternHighByte() {
+
+        uint8_t fineY = (v & 0x7000) >> 12;
+
+        uint16_t patternBaseAddress = 0x0000;
+        if ((PPUCTRL & (1 << 4)) > 0) {
+            patternBaseAddress = 0x1000;
+        }
+        uint16_t patternAddress = patternBaseAddress + (nextTileId * 16) + fineY + 8;
+
+        nextTileHigh = ppuBus.Read(patternAddress);
+
+    }
+
+    void LoadBackgroundShiftRegisters() {
+
+        uint8_t lowBit  = (nextTileAttribute & 0x01) > 0 ? 0xFF : 0x00;
+        uint8_t highBit = (nextTileAttribute & 0x02) > 0 ? 0xFF : 0x00;
+        backgroundShiftAttributeLow = (backgroundShiftAttributeLow & 0xFF00) | lowBit;
+        backgroundShiftAttributeHigh = (backgroundShiftAttributeHigh & 0xFF00) | highBit;
+
+        backgroundShiftPatternLow = (backgroundShiftPatternLow & 0xFF00) | nextTileLow;
+        backgroundShiftPatternHigh = (backgroundShiftPatternHigh & 0xFF00) | nextTileHigh;
+
+    }
+
+    void ShiftBackgroundRegisters() { // bit shift left pipelines to process next pixel/palette
+        backgroundShiftAttributeHigh = backgroundShiftAttributeHigh << 1;
+        backgroundShiftAttributeLow = backgroundShiftAttributeLow << 1;
+        backgroundShiftPatternHigh = backgroundShiftPatternHigh << 1;
+        backgroundShiftPatternLow = backgroundShiftPatternLow << 1;
+    }
+
+    uint8_t PullBackgroundPixel() { // pull from fineX offset on pattern pipeline
+        uint16_t mask = 0x8000 >> x;
+
+        uint8_t lowBit = (backgroundShiftPatternLow & mask) > 0 ? 0x01 : 0x00;
+        uint8_t highBit = (backgroundShiftPatternHigh & mask) > 0 ? 0x01 : 0x00;
+
+        uint8_t pixelValue = (highBit << 1) | lowBit;
+
+        return pixelValue;
+    }
+
+    uint8_t PullPaletteSelection() { // pull from fineX offset on palette pipeline
+        uint16_t mask = 0x8000 >> x;
+
+        uint8_t lowBit = (backgroundShiftAttributeLow & mask) > 0 ? 0x01 : 0x00;
+        uint8_t highBit = (backgroundShiftAttributeHigh & mask) > 0 ? 0x01 : 0x00;
+
+        uint8_t paletteSelection = (highBit << 1) | lowBit;
+
+        return paletteSelection;
     }
 };
