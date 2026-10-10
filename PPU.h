@@ -179,8 +179,6 @@ struct PPU {
 
             if ((dots >= 1 && dots <= 256) || (dots >= 321 && dots <= 336)) { // visible or pre-render dots
 
-
-
                 switch (dots % 8) { // eight dot fetch sequence
                     case 1:
                         LoadBackgroundShiftRegisters();
