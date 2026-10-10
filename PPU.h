@@ -167,97 +167,11 @@ struct PPU {
 
     void Clock() {
 
-        if (((PPUMASK & 0x18) > 0) && (scanline < 240 || scanline == 261)) { // background/sprite rendering enabled, and visible or pre-render scanlines
-
-            if (scanline < 240 && dots >= 1 && dots <= 256 && (PPUMASK & 0x08) && ((PPUMASK & 0x02) || dots > 8)) {
-                DrawBGPixel();
-            }
-
-            if ((dots >= 2 && dots <= 257) || (dots >= 322 && dots <= 337)) {
-                ShiftBackgroundRegisters();
-            }
-
-            if ((dots >= 1 && dots <= 256) || (dots >= 321 && dots <= 336)) { // visible or pre-render dots
-
-                switch (dots % 8) { // eight dot fetch sequence
-                    case 1:
-                        LoadBackgroundShiftRegisters();
-                        FetchNametableByte();
-                        break;
-                    case 3:
-                        FetchAttributeByte();
-                        break;
-                    case 5:
-                        FetchPatternLowByte();
-                        break;
-                    case 7:
-                        FetchPatternHighByte();
-                        break;
-                    case 0:
-                        IncrementCoarseX();
-                        break;
-                }
-
-            }
-
-
-            if (dots == 256) { // next row
-                IncrementFineY();
-            }
-            else if (dots == 257) { // restore starting X with scroll offset from t
-                CopyHorizontal();
-                LoadBackgroundShiftRegisters();
-            }
-            else if ((scanline == 261) && (dots >= 280 && dots <= 304)) { // prerender
-                CopyVertical();
-            }
-
-            else if (dots == 337) {
-                LoadBackgroundShiftRegisters();
-            }
-        }
-
-        if (scanline < 240 && (dots >= 1 && dots <= 256)) {
-                //sprite
-                if ((PPUMASK & (1 << 4)) > 0) { // is sprite render enabled
-                    if ((PPUMASK & (1 << 2)) > 0) { // should render sprite at leftmost 8 pixels
-                        DrawSpritePixel();
-                    }
-                    else {
-                        if (dots-1 < 8) {
-                            // don't render sprite pixel
-                        }
-                        else {
-                            DrawSpritePixel();
-                        }
-                    }
-                }
-
-            }
-
-        if (scanline == 241 && dots == 1) { // in VBlank
-            PPUSTATUS |= 0b10000000;
-
-            if (PPUCTRL & 0x80) {
-                send_NMI = true;
-            }
-        }
-
-        else if (scanline == 261 && dots == 1) { // in Prerender
-            PPUSTATUS &= 0b00111111; // clear vblank and sprite 0 hit
-            ClearFrame();
-        }
-
-        dots++;
-
-        if (dots >= 341) { // finished scanline
-            dots = 0;
-            scanline++;
-
-            if (scanline >= 262) { // finished screen
-                scanline = 0;
-            }
-        }
+        RenderPixel(); // render sprite and/or background pixel
+        BackgroundPipelineHandler(); // prepare or load next pixel/palette
+        ScrollingHandler(); // update next tile fetch position
+        VblankHandler(); // tell CPU to update sprites, background, etc, when in VBlank
+        AdvanceCounters(); // advance frame timing
 
     }
 
@@ -788,4 +702,112 @@ struct PPU {
 
         return paletteSelection;
     }
+
+    void AdvanceCounters() { // increments ppu dot and scanline
+
+        dots++;
+
+        if (dots >= 341) { // finished scanline
+            dots = 0;
+            scanline++;
+
+            if (scanline >= 262) { // finished screen
+                scanline = 0;
+            }
+        }
+    }
+
+    void VblankHandler() { // updates registers when entering and leaving Vblank
+        if (scanline == 241 && dots == 1) { // in VBlank
+            PPUSTATUS |= 0b10000000;
+
+            if (PPUCTRL & 0x80) {
+                send_NMI = true;
+            }
+        }
+
+        else if (scanline == 261 && dots == 1) { // in Prerender
+            PPUSTATUS &= 0b00111111; // clear vblank and sprite 0 hit
+            ClearFrame();
+        }
+    }
+
+    void RenderPixel() { // draws bg or sprite pixel when rendering visible portion of screen and does not conflict with registers
+        if (((PPUMASK & 0x18) > 0) && (scanline < 240) && (dots >= 1) && (dots <= 256)) { // background/sprite rendering enabled and within visible rendering
+
+            if ((PPUMASK & 0x08) && ((PPUMASK & 0x02) || dots > 8)) { // background rendering enabled and not in left-8 pixels if left-8 pixels rendering disabled
+                DrawBGPixel();
+            }
+            if ((PPUMASK & 0x10) && ((PPUMASK & 0x04) || dots > 8)) { // sprite rendering enabled and not in left-8 pixels if left-8 pixels rendering disabled
+                DrawSpritePixel();
+            }
+
+        }
+    }
+
+    void BackgroundPipelineHandler() { // orchrestrates shift registers depending on frame timing
+
+        if (!(PPUMASK & 0x18)) { // exit early if bg and sprite rendering disabled
+            return;
+        }
+
+        if (scanline >= 240 && scanline != 261) { // exit early if not in visible scanlines or pre-render scanline 261
+            return;
+        }
+
+        if ((dots >= 2 && dots <= 257) || (dots >= 322 && dots <= 337)) {
+            ShiftBackgroundRegisters();
+        }
+
+        if ((dots >= 1 && dots <= 256) || (dots >= 321 && dots <= 336)) { // visible or pre-render dots
+
+            switch (dots % 8) { // eight dot fetch sequence
+                case 1:
+                    LoadBackgroundShiftRegisters();
+                    FetchNametableByte();
+                    break;
+                case 3:
+                    FetchAttributeByte();
+                    break;
+                case 5:
+                    FetchPatternLowByte();
+                    break;
+                case 7:
+                    FetchPatternHighByte();
+                    break;
+                case 0:
+                    IncrementCoarseX();
+                    break;
+            }
+
+        }
+
+        if (dots == 337) { // load prefetched tile rows from dots 321-336
+            LoadBackgroundShiftRegisters();
+        }
+
+    }
+
+    void ScrollingHandler() { // updates register v depending on frame timing
+
+        if (!(PPUMASK & 0x18)) { // exit early if bg and sprite rendering disabled
+            return;
+        }
+
+        if (scanline >= 240 && scanline != 261) { // exit early if not in visible scanlines or pre-render scanline 261
+            return;
+        }
+
+        if (dots == 256) { // next pixel row
+            IncrementFineY();
+        }
+        else if (dots == 257) { // restore starting X with scroll offset from t
+            CopyHorizontal();
+        }
+        else if ((scanline == 261) && (dots >= 280 && dots <= 304)) { // prerender
+            CopyVertical();
+        }
+    }
+
+
 };
