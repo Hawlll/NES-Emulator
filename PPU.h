@@ -555,10 +555,6 @@ struct PPU {
         if (coarseY == 0x1D) {
             v ^= (1 << 11);
         }
-        else if (coarseY == 0x1E) {
-            coarseY++;
-            v |= (coarseY << 5);
-        }
         else if (coarseY == 0x1F) {
             // coarseY is set to 0, don't cross nametable
         }
