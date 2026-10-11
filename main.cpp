@@ -22,7 +22,7 @@ int main()
 
     NES nes(cpu, ppu, bus);
 
-    cart.Load("rom_tests/ppu_alternating_tiles_test.nes");
+    cart.Load("rom_tests/ppu_nametable_boundary_test.nes");
 
     cpu.Reset(bus);
 //
@@ -52,7 +52,7 @@ int main()
 
     int width = 256;
     int height = 240;
-    int SCALE = 3;
+    int SCALE = 5;
 
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
@@ -108,22 +108,7 @@ int main()
     bool running = true;
     SDL_Event event;
 
-
-    for (int i = 0; i < 800000; i++) {
-        nes.Clock();
-
-    }
-
-
     std::vector<uint8_t> screenPixels(256*240);
-
-    for (size_t y = 0; y < 240; y++) {
-        for (size_t x = 0; x < 256; x++) {
-            screenPixels[y * 256 + x] = ppu.frameBuffer[y][x];
-        }
-    }
-
-
 
     while (running) {
         while (SDL_PollEvent(&event)) {
@@ -132,6 +117,13 @@ int main()
             }
         }
 
+        nes.Clock();
+
+        for (size_t y = 0; y < 240; y++) {
+            for (size_t x = 0; x < 256; x++) {
+                screenPixels[y * 256 + x] = ppu.frameBuffer[y][x];
+            }
+        }
 
         SDL_UpdateTexture(texture, nullptr, screenPixels.data(), width * (int)sizeof(Uint8));
 
