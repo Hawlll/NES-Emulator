@@ -40,6 +40,20 @@ struct PPU {
 
     uint8_t OAMADDR = 0x00; // register for cpu to access OAM
 
+    struct SpriteEntry {
+        uint8_t y;
+        uint8_t tileId;
+        uint8_t attribute;
+        uint8_t x;
+        uint8_t oamIndex;
+        uint8_t patternLow;
+        uint8_t patternHigh;
+        uint8_t xCounter;
+    };
+
+    SpriteEntry scanlineSprites[8];
+    uint8_t spriteCount = 0;
+
     std::vector<std::vector<uint8_t>> frameBuffer{240, std::vector<uint8_t>(256, 0)}; // stores rendered frame
     std::vector<std::vector<bool>> backgroundOpaque{240, std::vector<bool>(256, false)}; // stores whether background is universal background color (CHR pixel value was 0)
 
@@ -404,6 +418,62 @@ struct PPU {
         }
         else {
             return ppuBus.Read(0x3F10 + (palette*4) + pixelValue);
+        }
+    }
+
+    void EvaluateSprites(uint16_t targetScanline) {
+
+        spriteCount = 0;
+
+        for (uint8_t i = 0x00; i < 64; i++) {
+            uint16_t spriteY = ppuBus.OAMRead(i);
+            int row = static_cast<int>(targetScanline) - ( static_cast<int>(spriteY) + 1);
+            if (row >= 0 && row < 8) {
+                uint8_t base = i * 4;
+                SpriteEntry entry;
+                entry.y = ppuBus.OAMRead(base);
+                entry.tileId = ppuBus.OAMRead(base+1);
+                entry.attribute = ppuBus.OAMRead(base+2);
+                entry.x = ppuBus.OAMRead(base+3);
+                entry.oamIndex = base;
+                scanlineSprites[spriteCount] = entry;
+                spriteCount++;
+            }
+            if (spriteCount == 8) {
+                break;
+            }
+        }
+
+    }
+
+    void FetchSpritePatterns(uint16_t targetScanline) {
+        for (uint8_t i = 0; i < spriteCount; i++) {
+            SpriteEntry& sprite = scanlineSprites[i];
+            int row = static_cast<int>(targetScanline) - static_cast<int>(sprite.y) - 1;
+            if (sprite.attribute & 0x80) { // vertical flip
+                row = 7 - row;
+            }
+
+            uint16_t baseTileAddress = PPUCTRL & 0x08 ? 0x1000 : 0x0000;
+            uint16_t lowByteAddress = baseTileAddress + (sprite.tileId * 16) + static_cast<uint8_t>(row);
+            uint16_t highByteAddress = lowByteAddress + 0x0008;
+            uint8_t lowByte = ppuBus.Read(lowByteAddress);
+            uint8_t highByte = ppuBus.Read(highByteAddress);
+
+            if (sprite.attribute & 0x40) { // horizontal flip
+                uint8_t revLowByte = 0x00;
+                uint8_t revHighByte = 0x00;
+                for (int i = 7; i > -1; i--) {
+                    revLowByte |= (lowByte & (1 << i)) >> i;
+                    revHighByte = (highByte & (1 << i)) >> i;
+                }
+                lowByte = revLowByte;
+                highByte = revHighByte;
+            }
+            sprite.patternLow = lowByte;
+            sprite.patternHigh = highByte;
+            sprite.xCounter = sprite.x;
+
         }
     }
 

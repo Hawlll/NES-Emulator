@@ -22,7 +22,7 @@ int main()
 
     NES nes(cpu, ppu, bus);
 
-    cart.Load("rom_tests/ppu_nametable_boundary_test.nes");
+    cart.Load("rom_tests/test.nes");
 
     cpu.Reset(bus);
 //

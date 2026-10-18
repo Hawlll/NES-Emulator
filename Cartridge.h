@@ -80,6 +80,7 @@ struct Cartridge {
                     chrRAM[Address] = Value;
                 }
                 else {
+                    std::cout << "Address: " << std::format("{:#X}", (int)Address) << std::endl;
                     throw std::runtime_error("Can't write. Cartridge provided chrROM");
                 }
                 break;
