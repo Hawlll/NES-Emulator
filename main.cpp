@@ -11,11 +11,12 @@ int main()
 
     Memory nametableRam(1024*2);
     Memory paletteRam(256);
-    Memory OAM(256);
+    Memory primaryOAM(256);
+    Memory secondaryOAM(32);
 
     Cartridge cart;
 
-    PPUBus ppuBus(cart, nametableRam, paletteRam, OAM);
+    PPUBus ppuBus(cart, nametableRam, paletteRam, primaryOAM, secondaryOAM);
     PPU ppu(ppuBus);
 
     Bus bus(cpuRam, cart, ppu);

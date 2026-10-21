@@ -51,8 +51,8 @@ struct PPU {
         uint8_t xCounter;
     };
 
-    SpriteEntry scanlineSprites[8];
-    uint8_t spriteCount = 0;
+    uint8_t spriteCount = 0x00; // how many sprites are in secondary OAM
+    bool spriteZeroSelected = false; // keeps track when sprite 0 enters secondary OAM
 
     std::vector<std::vector<uint8_t>> frameBuffer{240, std::vector<uint8_t>(256, 0)}; // stores rendered frame
     std::vector<std::vector<bool>> backgroundOpaque{240, std::vector<bool>(256, false)}; // stores whether background is universal background color (CHR pixel value was 0)
@@ -79,7 +79,7 @@ struct PPU {
             return prev;
         }
         else if (address == 0x2004) { // OAM
-            return ppuBus.OAMRead(OAMADDR);
+            return ppuBus.PrimaryOAMRead(OAMADDR);
         }
         else if (address == 0x2007) {
 
@@ -126,7 +126,7 @@ struct PPU {
             OAMADDR = data;
         }
         else if (address == 0x2004) {
-            ppuBus.OAMWrite(OAMADDR, data);
+            ppuBus.PrimaryOAMWrite(OAMADDR, data);
             OAMADDR++;
         }
         else if (address == 0x2005) { //write to scroll registers
@@ -251,8 +251,8 @@ struct PPU {
     auto DetermineSpriteNum(uint16_t screenX, uint16_t screenY) {
         std::vector<uint16_t> sprites;
         for (uint16_t i = 0; i < 64; i++) {
-            uint16_t Y = ppuBus.OAMRead(i*4);
-            uint16_t X = ppuBus.OAMRead((i*4)+3);
+            uint16_t Y = ppuBus.PrimaryOAMRead(i*4);
+            uint16_t X = ppuBus.PrimaryOAMRead((i*4)+3);
             bool sprite16Size = (PPUCTRL & (1 << 5)) > 0;
             if (sprite16Size) {
                 if ((screenY >= Y+1 && screenY < Y+17) && (screenX >= X && screenX < X+8)) {
@@ -276,10 +276,10 @@ struct PPU {
         for (uint16_t spriteNum : spriteNums) {
 
             uint16_t base = spriteNum * 4;
-            uint16_t Y = ppuBus.OAMRead(base);
-            uint8_t tileId = ppuBus.OAMRead(base + 1);
-            uint8_t attribute = ppuBus.OAMRead(base + 2);
-            uint16_t X = ppuBus.OAMRead(base + 3);
+            uint16_t Y = ppuBus.PrimaryOAMRead(base);
+            uint8_t tileId = ppuBus.PrimaryOAMRead(base + 1);
+            uint8_t attribute = ppuBus.PrimaryOAMRead(base + 2);
+            uint16_t X = ppuBus.PrimaryOAMRead(base + 3);
 
             uint8_t localX = screenX - X;
             uint8_t localY = screenY - (Y + 1);
@@ -423,21 +423,23 @@ struct PPU {
 
     void EvaluateSprites(uint16_t targetScanline) {
 
-        spriteCount = 0;
+        spriteCount = 0x00;
+        spriteZeroSelected = false;
 
         for (uint8_t i = 0x00; i < 64; i++) {
-            uint16_t spriteY = ppuBus.OAMRead(i);
+            int primaryBase = i*4;
+            int secondaryBase = spriteCount*4;
+            uint16_t spriteY = ppuBus.PrimaryOAMRead(primaryBase);
             int row = static_cast<int>(targetScanline) - ( static_cast<int>(spriteY) + 1);
             if (row >= 0 && row < 8) {
-                uint8_t base = i * 4;
-                SpriteEntry entry;
-                entry.y = ppuBus.OAMRead(base);
-                entry.tileId = ppuBus.OAMRead(base+1);
-                entry.attribute = ppuBus.OAMRead(base+2);
-                entry.x = ppuBus.OAMRead(base+3);
-                entry.oamIndex = base;
-                scanlineSprites[spriteCount] = entry;
-                spriteCount++;
+                if (i == 0) {
+                    spriteZeroSelected = true;
+                }
+                ppuBus.SecondaryOAMWrite(secondaryBase, ppuBus.PrimaryOAMRead(primaryBase)); // Y
+                ppuBus.SecondaryOAMWrite(secondaryBase+1, ppuBus.PrimaryOAMRead(primaryBase+1)); // tileId
+                ppuBus.SecondaryOAMWrite(secondaryBase+2, ppuBus.PrimaryOAMRead(primaryBase+2)); // attribute
+                ppuBus.SecondaryOAMWrite(secondaryBase+3, ppuBus.PrimaryOAMRead(primaryBase+3)); // X
+                spriteCount += 1;
             }
             if (spriteCount == 8) {
                 break;
@@ -481,10 +483,10 @@ struct PPU {
 
         if ((PPUMASK & (1 << 4)) > 0) { // is sprite render enabled
             uint8_t base = spriteNum * 4;
-            uint16_t Y = ppuBus.OAMRead(base);
-            uint8_t tileId = ppuBus.OAMRead(base + 1);
-            uint8_t attribute = ppuBus.OAMRead(base + 2);
-            uint16_t X = ppuBus.OAMRead(base + 3);
+            uint16_t Y = ppuBus.PrimaryOAMRead(base);
+            uint8_t tileId = ppuBus.PrimaryOAMRead(base + 1);
+            uint8_t attribute = ppuBus.PrimaryOAMRead(base + 2);
+            uint16_t X = ppuBus.PrimaryOAMRead(base + 3);
 
             bool horizontal_flip = (attribute & (1 << 6)) > 0;
             bool vertical_flip = (attribute & (1 << 7)) > 0;

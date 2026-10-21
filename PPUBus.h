@@ -9,9 +9,10 @@ struct PPUBus {
     Cartridge& cart;
     Memory& nametableRam; // stores tileID and implied tile location
     Memory& paletteRam; // stores color palettes ( 4 for background, 4 for sprites)
-    Memory& OAM; // (Object Attribute Memory) stores sprite metadata
+    Memory& primaryOAM; // (Object Attribute Memory) stores (up to) 64 sprite metadata
+    Memory& secondaryOAM; // (Object Attribute Memory) stores (up to) 8 sprite metadata for targeted scanline
 
-    PPUBus(Cartridge& c, Memory& nR, Memory& pR, Memory& oam) : cart(c), nametableRam(nR), paletteRam(pR), OAM(oam) {}
+    PPUBus(Cartridge& c, Memory& nR, Memory& pR, Memory& primOAM, Memory& secOAM) : cart(c), nametableRam(nR), paletteRam(pR), primaryOAM(primOAM), secondaryOAM(secOAM) {}
 
     uint16_t PaletteAddress(uint16_t Address) {
 
@@ -95,13 +96,19 @@ struct PPUBus {
         }
     }
 
-    void OAMWrite(uint8_t Address, uint8_t Value) {
-        OAM.Write(Address, Value);
+    void PrimaryOAMWrite(uint8_t Address, uint8_t Value) {
+        primaryOAM.Write(Address, Value);
     }
 
-    uint8_t OAMRead(uint8_t Address) {
-        return OAM.Read(Address);
+    uint8_t PrimaryOAMRead(uint8_t Address) {
+        return primaryOAM.Read(Address);
     }
 
+    void SecondaryOAMWrite(uint8_t Address, uint8_t Value) {
+        secondaryOAM.Write(Address, Value);
+    }
 
+    uint8_t SecondaryOAMRead(uint8_t Address) {
+        return secondaryOAM.Read(Address);
+    }
 };
