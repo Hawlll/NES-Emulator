@@ -49,8 +49,10 @@ struct PPU {
         uint8_t patternLow;
         uint8_t patternHigh;
         uint8_t xCounter;
+        uint8_t pixelsRemaining;
     };
 
+    SpriteEntry scanlineSprites[8]; // stores sprites to be rendered on scanline
     uint8_t spriteCount = 0x00; // how many sprites are in secondary OAM
     bool spriteZeroSelected = false; // keeps track when sprite 0 enters secondary OAM
 
@@ -435,10 +437,20 @@ struct PPU {
                 if (i == 0) {
                     spriteZeroSelected = true;
                 }
-                ppuBus.SecondaryOAMWrite(secondaryBase, ppuBus.PrimaryOAMRead(primaryBase)); // Y
-                ppuBus.SecondaryOAMWrite(secondaryBase+1, ppuBus.PrimaryOAMRead(primaryBase+1)); // tileId
-                ppuBus.SecondaryOAMWrite(secondaryBase+2, ppuBus.PrimaryOAMRead(primaryBase+2)); // attribute
-                ppuBus.SecondaryOAMWrite(secondaryBase+3, ppuBus.PrimaryOAMRead(primaryBase+3)); // X
+                SpriteEntry entry;
+                uint8_t Y = ppuBus.PrimaryOAMRead(primaryBase);
+                uint8_t tileId = ppuBus.PrimaryOAMRead(primaryBase+1);
+                uint8_t attribute = ppuBus.PrimaryOAMRead(primaryBase+2);
+                uint8_t X = ppuBus.PrimaryOAMRead(primaryBase+3);
+                ppuBus.SecondaryOAMWrite(secondaryBase, Y);
+                ppuBus.SecondaryOAMWrite(secondaryBase+1, tileId);
+                ppuBus.SecondaryOAMWrite(secondaryBase+2, attribute);
+                ppuBus.SecondaryOAMWrite(secondaryBase+3, X);
+                entry.y = Y;
+                entry.tileId = tileId;
+                entry.attribute = attribute;
+                entry.x = X;
+                entry.oamIndex = i;
                 spriteCount += 1;
             }
             if (spriteCount == 8) {
@@ -475,7 +487,31 @@ struct PPU {
             sprite.patternLow = lowByte;
             sprite.patternHigh = highByte;
             sprite.xCounter = sprite.x;
+            sprite.pixelsRemaining = 8;
 
+        }
+    }
+
+    auto GetSpritePixel() { // gets first opaque sprite pixel in scanlineSprites
+        for (int i = 0; i < spriteCount; i++) {
+            SpriteEntry& entry = scanlineSprites[i];
+            uint8_t lowBit = (entry.patternHigh & (1 >> 7)) & 0x01;
+            uint8_t highBit = (entry.patternLow & (1 << 7)) & 0x01;
+            uint8_t colorInd = (highBit << 1) | lowBit;
+
+            if ((colorInd != 0x00) && (entry.xCounter == 0) && (entry.pixelsRemaining != 0)) {
+                return colorInd;
+            }
+        }
+    }
+
+    void UpdateSpriteShifters() { // left shifts pattern bytes of each sprite in scanlineSprites
+        for (int i = 0; i < spriteCount; i++) {
+            SpriteEntry& entry = scanlineSprites[i];
+            if ((entry.xCounter == 0) && (entry.pixelsRemaining != 0)) {
+                entry.patternLow <<= 1;
+                entry.patternHigh <<= 1;
+            }
         }
     }
 
