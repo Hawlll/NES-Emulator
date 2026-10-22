@@ -45,7 +45,7 @@ struct PPU {
         uint8_t tileId;
         uint8_t attribute;
         uint8_t x;
-        uint8_t oamIndex;
+        bool isSpriteZero;
         uint8_t patternLow;
         uint8_t patternHigh;
         uint8_t xCounter;
@@ -61,6 +61,7 @@ struct PPU {
 
     SpriteEntry scanlineSprites[8]; // stores sprites to be rendered on scanline
     uint8_t spriteCount = 0x00; // how many sprites are in secondary OAM
+    uint8_t activeSpriteCount = 0x00;
     bool spriteZeroSelected = false; // keeps track when sprite 0 enters secondary OAM
 
     std::vector<std::vector<uint8_t>> frameBuffer{240, std::vector<uint8_t>(256, 0)}; // stores rendered frame
@@ -198,6 +199,7 @@ struct PPU {
             }
             else if (dots == 257) {
                 FetchSpritePatterns(scanline+1);
+                activeSpriteCount = spriteCount;
             }
         }
         BackgroundPipelineHandler(); // prepare or load next pixel/palette
@@ -369,7 +371,6 @@ struct PPU {
                 if (i == 0) {
                     spriteZeroSelected = true;
                 }
-                SpriteEntry entry;
                 uint8_t Y = ppuBus.PrimaryOAMRead(primaryBase);
                 uint8_t tileId = ppuBus.PrimaryOAMRead(primaryBase+1);
                 uint8_t attribute = ppuBus.PrimaryOAMRead(primaryBase+2);
@@ -378,11 +379,6 @@ struct PPU {
                 ppuBus.SecondaryOAMWrite(secondaryBase+1, tileId);
                 ppuBus.SecondaryOAMWrite(secondaryBase+2, attribute);
                 ppuBus.SecondaryOAMWrite(secondaryBase+3, X);
-                entry.y = Y;
-                entry.tileId = tileId;
-                entry.attribute = attribute;
-                entry.x = X;
-                entry.oamIndex = i;
                 spriteCount += 1;
             }
             if (spriteCount == 8) {
@@ -394,33 +390,44 @@ struct PPU {
 
     void FetchSpritePatterns(uint16_t targetScanline) { // populates scanlineSprites from secondaryOAM
         for (uint8_t i = 0; i < spriteCount; i++) {
-            SpriteEntry& sprite = scanlineSprites[i];
-            int row = static_cast<int>(targetScanline) - static_cast<int>(sprite.y) - 1;
-            if (sprite.attribute & 0x80) { // vertical flip
+            uint8_t base = i * 4;
+            uint8_t Y = ppuBus.SecondaryOAMRead(base);
+            uint8_t tileId = ppuBus.SecondaryOAMRead(base+1);
+            uint8_t attribute = ppuBus.SecondaryOAMRead(base+2);
+            uint8_t X = ppuBus.SecondaryOAMRead(base+3);
+
+            int row = static_cast<int>(targetScanline) - static_cast<int>(Y) - 1;
+            if (attribute & 0x80) { // vertical flip
                 row = 7 - row;
             }
 
             uint16_t baseTileAddress = PPUCTRL & 0x08 ? 0x1000 : 0x0000;
-            uint16_t lowByteAddress = baseTileAddress + (sprite.tileId * 16) + static_cast<uint8_t>(row);
+            uint16_t lowByteAddress = baseTileAddress + (tileId * 16) + static_cast<uint8_t>(row);
             uint16_t highByteAddress = lowByteAddress + 0x0008;
             uint8_t lowByte = ppuBus.Read(lowByteAddress);
             uint8_t highByte = ppuBus.Read(highByteAddress);
 
-            if (sprite.attribute & 0x40) { // horizontal flip
+            if (attribute & 0x40) { // horizontal flip
                 uint8_t revLowByte = 0x00;
                 uint8_t revHighByte = 0x00;
-                for (int i = 7; i > -1; i--) {
-                    revLowByte |= (lowByte & (1 << i)) >> i;
-                    revHighByte = (highByte & (1 << i)) >> i;
+                for (int i = 0; i < 8; i++) {
+                    revLowByte |= ((lowByte >> i) & 0x01) >> (7-i);
+                    revHighByte |= ((highByte >> i) & 0x01) >> (7-i);
                 }
                 lowByte = revLowByte;
                 highByte = revHighByte;
             }
+            SpriteEntry sprite{};
             sprite.patternLow = lowByte;
             sprite.patternHigh = highByte;
             sprite.xCounter = sprite.x;
             sprite.pixelsRemaining = 8;
-
+            sprite.x = X;
+            sprite.y = Y;
+            sprite.tileId = tileId;
+            sprite.attribute = attribute;
+            sprite.isSpriteZero = (i == 0 && spriteZeroSelected);
+            scanlineSprites[i] = sprite;
         }
     }
 
@@ -435,7 +442,7 @@ struct PPU {
             if ((colorInd != 0x00) && (entry.xCounter == 0) && (entry.pixelsRemaining != 0)) {
                 uint8_t palSelection = entry.attribute & 0x03;
                 bool behindBackground = entry.attribute & (1 << 5);
-                bool spriteZero = entry.oamIndex == 0;
+                bool spriteZero = entry.isSpriteZero;
                 pxl.paletteSel = palSelection;
                 pxl.isBehindBackground = behindBackground;
                 pxl.isSpriteZero = spriteZero;
