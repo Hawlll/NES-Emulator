@@ -199,7 +199,6 @@ struct PPU {
             }
             else if (dots == 257) {
                 FetchSpritePatterns(scanline+1);
-                activeSpriteCount = spriteCount;
             }
         }
         BackgroundPipelineHandler(); // prepare or load next pixel/palette
@@ -427,7 +426,9 @@ struct PPU {
             sprite.tileId = tileId;
             sprite.attribute = attribute;
             sprite.isSpriteZero = (i == 0 && spriteZeroSelected);
+            sprite.xCounter = X;
             scanlineSprites[i] = sprite;
+            activeSpriteCount = spriteCount;
         }
     }
 
