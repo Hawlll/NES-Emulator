@@ -52,6 +52,13 @@ struct PPU {
         uint8_t pixelsRemaining;
     };
 
+    struct SpritePixel {
+        uint8_t colorInd = 0x00;
+        uint8_t paletteSel = 0x00;
+        bool isSpriteZero = false;
+        bool isBehindBackground = false;
+    };
+
     SpriteEntry scanlineSprites[8]; // stores sprites to be rendered on scanline
     uint8_t spriteCount = 0x00; // how many sprites are in secondary OAM
     bool spriteZeroSelected = false; // keeps track when sprite 0 enters secondary OAM
@@ -184,6 +191,15 @@ struct PPU {
     void Clock() {
 
         RenderPixel(); // render sprite and/or background pixel
+        UpdateSpriteEntries();
+        if ((scanline != 261) && (scanline+1 < 240)) {
+            if (dots == 65) {
+                EvaluateSprites(scanline+1);
+            }
+            else if (dots == 257) {
+                FetchSpritePatterns(scanline+1);
+            }
+        }
         BackgroundPipelineHandler(); // prepare or load next pixel/palette
         ScrollingHandler(); // update next tile fetch position
         VblankHandler(); // tell CPU to update sprites, background, etc, when in VBlank
@@ -270,97 +286,13 @@ struct PPU {
         return sprites; // sprite not found at screen location
     }
 
-    void DrawSpritePixel(){
+    void DrawSpritePixel(SpritePixel& pxl){
 
         uint16_t screenX = dots - 1;
         uint16_t screenY = scanline;
-        auto spriteNums = DetermineSpriteNum(screenX, screenY);
-        for (uint16_t spriteNum : spriteNums) {
-
-            uint16_t base = spriteNum * 4;
-            uint16_t Y = ppuBus.PrimaryOAMRead(base);
-            uint8_t tileId = ppuBus.PrimaryOAMRead(base + 1);
-            uint8_t attribute = ppuBus.PrimaryOAMRead(base + 2);
-            uint16_t X = ppuBus.PrimaryOAMRead(base + 3);
-
-            uint8_t localX = screenX - X;
-            uint8_t localY = screenY - (Y + 1);
-
-            bool horizontal_flip = (attribute & (1 << 6)) > 0;
-            bool vertical_flip = (attribute & (1 << 7)) > 0;
-
-            uint8_t paletteIndex = attribute & 0x03;
-            bool backgroundPriority = (attribute & (1 << 5)) > 0;
-
-
-            bool spriteSize16 = (PPUCTRL & (1 << 5)) > 0;
-            if (spriteSize16) { // if sprite is 8x16 (two tiles, 32 bytes long)
-                uint16_t patternBaseAddress = 0x0000;
-                if ((tileId & 0x01) > 0) {
-                    patternBaseAddress = 0x1000;
-                }
-
-                uint8_t topTileId = tileId & 0xFE;
-                uint8_t bottomTileId = topTileId + 1;
-
-                auto bottomTile = DecodeTile(patternBaseAddress + (bottomTileId * 16));
-
-                auto combinedTile = DecodeTile(patternBaseAddress + (topTileId * 16));
-                combinedTile.insert(combinedTile.end(), bottomTile.begin(), bottomTile.end());
-                if (horizontal_flip) {
-                    localX = 7 - localX;
-                }
-                if (vertical_flip) {
-                    localY = 15 - localY;
-                }
-                uint8_t pixel_value = combinedTile[localY][localX];
-                if (pixel_value == 0) { // sprite pixel is transparent or opaque background with priority
-                    continue;
-                }
-                if (spriteNum == 0 && backgroundOpaque[screenY][screenX]) { // sprite 0 hit
-                    PPUSTATUS |= (1 << 6);
-                }
-                if (backgroundPriority && backgroundOpaque[screenY][screenX]) {
-                    return; // this is winning sprite, but background covers it
-                }
-                uint8_t color = ColorIndexLookupSprite(paletteIndex, pixel_value);
-                frameBuffer[screenY][screenX] = color;
-                return; // stop since we found first non-transparent sprite pixel
-
-                }
-            else {
-                uint16_t patternBaseAddress = 0x0000; // where the tiles are stored in CHR ROM
-                if ((PPUCTRL & (1 << 3)) > 0) {
-                    patternBaseAddress = 0x1000;
-                }
-
-                uint16_t spriteTileAddress = patternBaseAddress + (tileId * 16);
-                auto tile = DecodeTile(spriteTileAddress);
-                if (horizontal_flip) {
-                    localX = 7 - localX;
-                }
-                if (vertical_flip) {
-                    localY = 7 - localY;
-                }
-                uint8_t pixel_value = tile[localY][localX];
-                if (pixel_value == 0) { // sprite pixel is transparent or opaque background with priority
-                    continue;
-                }
-                if (spriteNum == 0 && backgroundOpaque[screenY][screenX]) { // sprite 0 hit
-                    PPUSTATUS |= (1 << 6);
-                }
-                if (backgroundPriority && backgroundOpaque[screenY][screenX]) {
-                    return; // this is winning sprite, but background covers it
-                }
-                uint8_t color = ColorIndexLookupSprite(paletteIndex, pixel_value);
-                frameBuffer[screenY][screenX] = color;
-                return; // stop since we found first non-transparent sprite pixel
-            }
-        }
+        uint8_t color = ColorIndexLookupSprite(pxl.paletteSel, pxl.colorInd);
+        frameBuffer[screenX][screenY] = color;
     }
-
-
-
 
     void DrawNameTable(uint16_t Address) {
         // 30x32 screen. bytes stored sequentially. each byte stores tile id. position on screen is implied
@@ -460,7 +392,7 @@ struct PPU {
 
     }
 
-    void FetchSpritePatterns(uint16_t targetScanline) {
+    void FetchSpritePatterns(uint16_t targetScanline) { // populates scanlineSprites from secondaryOAM
         for (uint8_t i = 0; i < spriteCount; i++) {
             SpriteEntry& sprite = scanlineSprites[i];
             int row = static_cast<int>(targetScanline) - static_cast<int>(sprite.y) - 1;
@@ -492,25 +424,42 @@ struct PPU {
         }
     }
 
-    auto GetSpritePixel() { // gets first opaque sprite pixel in scanlineSprites
+    SpritePixel GetSpritePixel() { // gets first opaque sprite pixel in scanlineSprites
+        SpritePixel pxl;
         for (int i = 0; i < spriteCount; i++) {
             SpriteEntry& entry = scanlineSprites[i];
-            uint8_t lowBit = (entry.patternHigh & (1 >> 7)) & 0x01;
-            uint8_t highBit = (entry.patternLow & (1 << 7)) & 0x01;
+            uint8_t lowBit = (entry.patternHigh >> 7) & 0x01;
+            uint8_t highBit = (entry.patternLow >> 7) & 0x01;
             uint8_t colorInd = (highBit << 1) | lowBit;
 
             if ((colorInd != 0x00) && (entry.xCounter == 0) && (entry.pixelsRemaining != 0)) {
-                return colorInd;
+                uint8_t palSelection = entry.attribute & 0x03;
+                bool behindBackground = entry.attribute & (1 << 5);
+                bool spriteZero = entry.oamIndex == 0;
+                pxl.paletteSel = palSelection;
+                pxl.isBehindBackground = behindBackground;
+                pxl.isSpriteZero = spriteZero;
+                pxl.colorInd = colorInd;
+                return pxl;
             }
         }
+        return pxl; // renderer will catch when colorInd is 0x00 (not found)
     }
 
-    void UpdateSpriteShifters() { // left shifts pattern bytes of each sprite in scanlineSprites
-        for (int i = 0; i < spriteCount; i++) {
-            SpriteEntry& entry = scanlineSprites[i];
-            if ((entry.xCounter == 0) && (entry.pixelsRemaining != 0)) {
-                entry.patternLow <<= 1;
-                entry.patternHigh <<= 1;
+    void UpdateSpriteEntries() { // updates counters, shifters, and pixelsRemaining
+
+        if (PPUMASK & (1 << 4)) {
+            for (int i = 0; i < spriteCount; i++) {
+                SpriteEntry& entry = scanlineSprites[i];
+
+                if (entry.xCounter > 0) {
+                    entry.xCounter--;
+                }
+                else if (entry.pixelsRemaining > 0) {
+                    entry.patternLow <<= 1;
+                    entry.patternHigh <<= 1;
+                    entry.pixelsRemaining--;
+                }
             }
         }
     }
@@ -838,14 +787,43 @@ struct PPU {
 
     void RenderPixel() { // draws bg or sprite pixel when rendering visible portion of screen and does not conflict with registers
         if (((PPUMASK & 0x18) > 0) && (scanline < 240) && (dots >= 1) && (dots <= 256)) { // background/sprite rendering enabled and within visible rendering
+            ResolvePixel();
+        }
+    }
 
-            if ((PPUMASK & 0x08) && ((PPUMASK & 0x02) || dots > 8)) { // background rendering enabled and not in left-8 pixels if left-8 pixels rendering disabled
+    void ResolvePixel() {
+
+        SpritePixel spritePixel = GetSpritePixel();
+
+        if ( ((PPUMASK & 0x08) && ((PPUMASK & 0x02) || dots > 8)) || ((PPUMASK & 0x10) && ((PPUMASK & 0x04) || dots > 8))) {
+        // background rendering enabled, and not in left-8 pixels if left-8 pixels rendering disabled
+            if (!((PPUMASK & 0x10) && ((PPUMASK & 0x04) || dots > 8))) { // sprite rendering disabled
                 DrawBGPixel();
             }
-            if ((PPUMASK & 0x10) && ((PPUMASK & 0x04) || dots > 8)) { // sprite rendering enabled and not in left-8 pixels if left-8 pixels rendering disabled
-                DrawSpritePixel();
+            else if (!((PPUMASK & 0x08) && ((PPUMASK & 0x02) || dots > 8))) { // background rendering disabled
+                DrawSpritePixel(spritePixel);
             }
-
+            else {
+                if ((PPUMASK & 0x04) || (dots > 8)) { // is the sprite pixel past left most 8 or leftmost 8 rendering is enabled
+                    uint8_t bgPixel = PullBackgroundPixel();
+                    if ((spritePixel.colorInd != 0x00) && (bgPixel != 0x00)) { // sprite opaque and has priority
+                        if ((spritePixel.isSpriteZero) && (dots < 255)) { // is sprite zero hit
+                            PPUSTATUS |= (1 << 6);
+                        }
+                        if (spritePixel.isBehindBackground) {DrawBGPixel();}
+                        else {DrawSpritePixel(spritePixel);}
+                    }
+                    else if ((spritePixel.colorInd == 0x00)) {
+                        DrawBGPixel();
+                    }
+                    else {
+                        DrawSpritePixel(spritePixel);
+                    }
+                }
+                else {
+                    DrawBGPixel();
+                }
+            }
         }
     }
 
