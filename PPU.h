@@ -191,14 +191,17 @@ struct PPU {
 
     void Clock() {
 
-        RenderPixel(); // render sprite and/or background pixel
-        UpdateSpriteEntries();
-        if ((scanline != 261) && (scanline+1 < 240)) {
+        if ((scanline < 240) && (dots >= 1) && (dots <= 256)) { // during visible pixels
+            RenderPixel(); // render sprite and/or background pixel
+            UpdateSpriteEntries();
+        }
+        if ((scanline == 261) || (scanline < 239)) { // visible scanlines or prerender
+            uint16_t targetedScanline = (scanline == 261) ? 0 : scanline + 1;
             if (dots == 65) {
-                EvaluateSprites(scanline+1);
+                EvaluateSprites(targetedScanline);
             }
             else if (dots == 257) {
-                FetchSpritePatterns(scanline+1);
+                FetchSpritePatterns(targetedScanline);
             }
         }
         BackgroundPipelineHandler(); // prepare or load next pixel/palette
@@ -292,7 +295,7 @@ struct PPU {
         uint16_t screenX = dots - 1;
         uint16_t screenY = scanline;
         uint8_t color = ColorIndexLookupSprite(pxl.paletteSel, pxl.colorInd);
-        frameBuffer[screenX][screenY] = color;
+        frameBuffer[screenY][screenX] = color;
     }
 
     void DrawNameTable(uint16_t Address) {
@@ -349,7 +352,7 @@ struct PPU {
 
     uint8_t ColorIndexLookupSprite(uint8_t palette, uint8_t pixelValue) { // lookup color index byte from palette ram
         if (pixelValue == 0) {
-            throw std::runtime_error("Can't return color. Sprite color index 0 is transparent");
+            return ppuBus.Read(0x3F00);
         }
         else {
             return ppuBus.Read(0x3F10 + (palette*4) + pixelValue);
@@ -366,7 +369,7 @@ struct PPU {
             int secondaryBase = spriteCount*4;
             uint16_t spriteY = ppuBus.PrimaryOAMRead(primaryBase);
             int row = static_cast<int>(targetScanline) - ( static_cast<int>(spriteY) + 1);
-            if (row >= 0 && row < 8) {
+            if (row >= 0 && row < 8 && spriteCount < 8) {
                 if (i == 0) {
                     spriteZeroSelected = true;
                 }
@@ -380,7 +383,8 @@ struct PPU {
                 ppuBus.SecondaryOAMWrite(secondaryBase+3, X);
                 spriteCount += 1;
             }
-            if (spriteCount == 8) {
+            else {
+                PPUSTATUS |= (1 << 5); // sprite overflow
                 break;
             }
         }
@@ -410,8 +414,8 @@ struct PPU {
                 uint8_t revLowByte = 0x00;
                 uint8_t revHighByte = 0x00;
                 for (int i = 0; i < 8; i++) {
-                    revLowByte |= ((lowByte >> i) & 0x01) >> (7-i);
-                    revHighByte |= ((highByte >> i) & 0x01) >> (7-i);
+                    revLowByte |= ((lowByte >> i) & 0x01) << (7-i);
+                    revHighByte |= ((highByte >> i) & 0x01) << (7-i);
                 }
                 lowByte = revLowByte;
                 highByte = revHighByte;
@@ -419,7 +423,6 @@ struct PPU {
             SpriteEntry sprite{};
             sprite.patternLow = lowByte;
             sprite.patternHigh = highByte;
-            sprite.xCounter = sprite.x;
             sprite.pixelsRemaining = 8;
             sprite.x = X;
             sprite.y = Y;
@@ -428,16 +431,17 @@ struct PPU {
             sprite.isSpriteZero = (i == 0 && spriteZeroSelected);
             sprite.xCounter = X;
             scanlineSprites[i] = sprite;
-            activeSpriteCount = spriteCount;
         }
+        activeSpriteCount = spriteCount;
+
     }
 
     SpritePixel GetSpritePixel() { // gets first opaque sprite pixel in scanlineSprites
         SpritePixel pxl;
-        for (int i = 0; i < spriteCount; i++) {
+        for (int i = 0; i < activeSpriteCount; i++) {
             SpriteEntry& entry = scanlineSprites[i];
-            uint8_t lowBit = (entry.patternHigh >> 7) & 0x01;
-            uint8_t highBit = (entry.patternLow >> 7) & 0x01;
+            uint8_t lowBit = (entry.patternLow >> 7) & 0x01;
+            uint8_t highBit = (entry.patternHigh >> 7) & 0x01;
             uint8_t colorInd = (highBit << 1) | lowBit;
 
             if ((colorInd != 0x00) && (entry.xCounter == 0) && (entry.pixelsRemaining != 0)) {
@@ -457,7 +461,7 @@ struct PPU {
     void UpdateSpriteEntries() { // updates counters, shifters, and pixelsRemaining
 
         if (PPUMASK & (1 << 4)) {
-            for (int i = 0; i < spriteCount; i++) {
+            for (int i = 0; i < activeSpriteCount; i++) {
                 SpriteEntry& entry = scanlineSprites[i];
 
                 if (entry.xCounter > 0) {
@@ -788,7 +792,7 @@ struct PPU {
         }
 
         else if (scanline == 261 && dots == 1) { // in Prerender
-            PPUSTATUS &= 0b00111111; // clear vblank and sprite 0 hit
+            PPUSTATUS &= 0b00011111; // clear vblank, sprite 0 flag, sprite overflow flag
             ClearFrame();
         }
     }
@@ -815,7 +819,7 @@ struct PPU {
                 if ((PPUMASK & 0x04) || (dots > 8)) { // is the sprite pixel past left most 8 or leftmost 8 rendering is enabled
                     uint8_t bgPixel = PullBackgroundPixel();
                     if ((spritePixel.colorInd != 0x00) && (bgPixel != 0x00)) { // sprite opaque and has priority
-                        if ((spritePixel.isSpriteZero) && (dots < 255)) { // is sprite zero hit
+                        if ((spritePixel.isSpriteZero) && (dots < 256)) { // is sprite zero hit
                             PPUSTATUS |= (1 << 6);
                         }
                         if (spritePixel.isBehindBackground) {DrawBGPixel();}
