@@ -23,7 +23,7 @@ int main()
 
     NES nes(cpu, ppu, bus);
 
-    cart.Load("rom_tests/sprite0_hit_cpu_poll_test.nes");
+    cart.Load("rom_tests/test.nes");
 
     cpu.Reset(bus);
 //
