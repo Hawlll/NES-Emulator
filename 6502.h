@@ -135,6 +135,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xA4: // LDY (Zero page addressing mode) (Load into Y register - take value from zero page address with offset and load into y register
                 return 3;
                 break;
+            case 0xB4: // LDY (Zero page index X addressing mode) (Load into Y register) take value from zero page address with Y as offset and load into y register
+                return 4;
+                break;
             case 0x8D: // STA (Store Accumulator) - take value from accumulator and store into 16 bit address formed with next two bytes
                 return 4;
                 break;
@@ -170,6 +173,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0x6D: // ADC (Absolute Addressing mode) (Add with carry) - add value from address formed by next two bytes with carry into accumulator
                 return 4;
+                break;
+            case 0x65: // ADC (Zero page addressing mode) (Add with carry) - add value from zero page address with offset and carry into accumulator
+                return 3;
                 break;
             case 0xE9: // SBC  (Subtract with carry) take immediate value, inverse carry, and subtract from accumulator register
                 return 2;
@@ -334,6 +340,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x01: // ORA (indirect X addressing mode) (Bitwise OR) - Bitwise OR accumulator and indirect. Set result to accumulator
                 return 6;
                 break;
+            case 0x05: // ORA (Zero page addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at zero page address with offset
+                return 3;
+                break;
             case 0x49: // EOR (immediate addressing mode) (Bitwise XOR) - Bitwise XOR accumulator and immediate. Set result to accumulator
                 return 2;
                 break;
@@ -342,6 +351,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0x0A: // ASL (Arithmetic Shift Left) - Shifts accumulator value left 1 bit. Stores bit 7 in carry.
                 return 2;
+                break;
+            case 0x06: // ASL (Zero page addressing mode) (Arithmetic Shift Left) - Shifts value at zero page address with offset left 1 bit. Stores bit 7 in carry.
+                return 5;
                 break;
             case 0x4A: // LSR (Logical shift right) - Shifts accumulator value right 1 bit. Stores bit 0 in carry.
                 return 2;
@@ -589,6 +601,26 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         Y = bus.Read(address_latch);
                         SetZFLAG(Y);
                         SetNFLAG(Y);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+            case 0xB4: // LDY (Zero page index X addressing mode) (Load into Y register) take value from zero page address with Y as offset and load into y register
+
+                switch (cycles) {
+                    case 3:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2: {
+                        uint8_t low_byte = (address_latch & 0x00FF) + X;
+                        address_latch = 0x0000 + low_byte;
+                        break;
+                    }
+                    case 1:
+                        Y = bus.Read(address_latch);
                         break;
                     default:
                         break;
@@ -850,6 +882,34 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         break;
                 }
                 break;
+
+
+            case 0x65: // ADC (Zero page addressing mode) (Add with carry) - add value from zero page address with offset and carry into accumulator
+
+                switch (cycles) {
+                    case 2:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t carry = (status & C_FLAG) > 0;
+                        uint16_t operation_result = A + bus.Read(address_latch) + carry;
+                        uint8_t A_prev = A;
+
+                        A = operation_result & 0x00FF;
+
+                        SetNFLAG(A);
+                        SetZFLAG(A);
+                        SetCFLAG(operation_result);
+                        SetVFLAG(bus.Read(address_latch), A_prev, A);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+
 
             case 0xE9: // SBC (Subtract with Carry) - take immediate value, NOT carry, and subtract from accumulator register
                        // It is NOT carry because its the flag is intrepreted as its inverse for substraction (C = 1 means no borrow, C = 0 means borrow happened)
@@ -1672,6 +1732,23 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
 
 
+            case 0x05: // ORA (Zero page addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at zero page address with offset
+
+                switch (cycles) {
+                    case 2:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 1:
+                        A |= bus.Read(address_latch);
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
             case 0x49: // EOR (Bitwise XOR immediate addressing mode) - Bitwise XOR accumulator and immediate. Set result to accumulator
 
                 switch (cycles) {
@@ -1723,6 +1800,32 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0x06: // ASL (Zero page addressing mode) (Arithmetic Shift Left) - Shifts value at zero page address with offset left 1 bit. Stores bit 7 in carry.
+
+                switch (cycles) {
+                    case 4:
+                        address_latch = 0x0000;
+                        break;
+                    case 3:
+                        address_latch += Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        SetCFLAG((value & 0x80) > 0);
+                        value = value << 1;
+                        SetZFLAG(value);
+                        SetNFLAG(value);
+                        bus.Write(address_latch, value);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
             case 0x4A: // LSR (Logical shift right) - Shifts accumulator value right 1 bit. Stores bit 0 in carry.
 
                 switch (cycles) {
@@ -1755,6 +1858,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         value = value >> 1;
                         SetZFLAG(value);
                         SetNFLAG(false);
+                        bus.Write(address_latch, value);
                         break;
                     }
                     default:
@@ -1817,6 +1921,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         value |= (prev_carry << 7);
                         SetZFLAG(value);
                         SetNFLAG(value);
+                        bus.Write(address_latch, value);
                         break;
                     }
                     default:
