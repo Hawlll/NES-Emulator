@@ -26,30 +26,6 @@ int main()
     cart.Load("rom_tests/Donkey Kong Jr. (JU).nes");
 
     cpu.Reset(bus);
-//
-//    cpu.PC = 0x0000;
-//    bus.Write(0x0000, 0xA9);
-//    bus.Write(0x0001, 0x7E);
-//    bus.Write(0x0002, 0xCE);
-//    bus.Write(0x0003, 0xFE);
-//    bus.Write(0x0004, 0x07);
-//    bus.Write(0x07FE, 0x06);
-//
-//    for (int i = 0; i < 30; i++) {
-//        std::cout << "PC: " << std::format("{:#X}", (int)cpu.PC) << " | ";
-//        std::cout << "OP: " << std::format("{:#X}", (int)cpu.instruction_latch) << " | ";
-//        std::cout << "A: " << std::format("{:#X}", (int)cpu.A) << " | ";
-//        std::cout << "X: " << std::format("{:#X}", (int)cpu.X) << " | ";
-//        std::cout << "Y: " << std::format("{:#X}", (int)cpu.Y) << " | ";
-//        std::cout << "SP: " << std::format("{:#X}", (int)cpu.SP) << " | ";
-//        std::cout << "Clocks: " << (int)cpu.cycles << " | ";
-//        for (int j = 7; j >= 0; j--) {std::cout << (bool)(cpu.status & (1 << j));}
-//        std::cout << std::endl;
-//
-//        cpu.Clock(bus);
-//    }
-
-    // test ppu graphics
 
     int width = 256;
     int height = 240;
@@ -118,7 +94,9 @@ int main()
             }
         }
 
-        nes.Clock();
+        while (!(ppu.scanline == 240 && ppu.dots == 0)) {
+            nes.Clock();
+        }
 
         for (size_t y = 0; y < 240; y++) {
             for (size_t x = 0; x < 256; x++) {
@@ -131,6 +109,7 @@ int main()
         SDL_RenderClear(renderer);
         SDL_RenderTexture(renderer, texture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
+        nes.Clock();
     }
 
     SDL_DestroyTexture(texture);

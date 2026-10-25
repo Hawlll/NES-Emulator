@@ -120,6 +120,17 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
             }
+            case 0xB9: { // LDA (Absolute index Y addressing mode) (Load into Accumulator register) - take value from sum of (absolute address formed by next two bytes) + (Y register) and put into accumulator. grants another cycle if page cross
+                uint8_t low_byte = bus.Read(PC+1);
+                uint16_t result = low_byte + Y;
+                if (result <= 0x00FF) {
+                    return 4;
+                }
+                else{
+                    return 5;
+                }
+                break;
+            }
             case 0xA2: // LDX(Load into X register) - take immediate value and load into x register
                 return 2;
                 break;
@@ -205,6 +216,12 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 return 6;
                 break;
             case 0xC6: // DEC (Zero page addressing mode) (Decrement Memory) - Decrements value at zero page address with offset
+                return 5;
+                break;
+            case 0xD6: // DEC (zero page index x addressing mode) (Decrement Memory) - Decrements value at zero page address with offset and X
+                return 6;
+                break;
+            case 0xE6: // INC (zero page addressing mode) (Increment memory) - add one to value at zero page address with offset
                 return 5;
                 break;
             case 0xE8: // INX (Increment X) - Add one to the X register
@@ -333,6 +350,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0x29: // AND (immediate addressing mode) (Bitwise AND) - Bitwise AND accumulator and immediate. Set result to accumulator
                 return 2;
+                break;
+            case 0x35: // AND (zero page index X addressing mode) (Bitwise AND) - Bitwise AND accumulator and value at zero page address with offset and X. Set result to accumulator
+                return 4;
                 break;
             case 0x09: // ORA (immediate addressing mode) (Bitwise OR) - Bitwise OR accumulator and immediate. Set result to accumulator
                 return 2;
@@ -522,6 +542,29 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0xB9: // LDA (Absolute index Y addressing mode) (Load into Accumulator register) - take value from sum of (absolute address formed by next two bytes) + (Y register) and put into accumulator. grants another cycle if page cross
+
+                switch (cycles) {
+                    case 4:
+                        break; // extra cycle due to page cross
+                    case 3:
+                        address_latch = 0x0000 + Fetch(PC, bus) + Y;
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch = (Fetch(PC, bus) << 8) + address_latch;
+                        PC++;
+                        break;
+                    case 1:
+                        A = bus.Read(address_latch);
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
             case 0xA2: // LDX(Load into X register) - take immediate value and load into x register
 
                 switch (cycles) {
@@ -607,7 +650,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
-            case 0xB4: // LDY (Zero page index X addressing mode) (Load into Y register) take value from zero page address with Y as offset and load into y register
+            case 0xB4: // LDY (Zero page index X addressing mode) (Load into Y register) take value from zero page address with X as offset and load into y register
 
                 switch (cycles) {
                     case 3:
@@ -1026,6 +1069,31 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0xE6: // INC (zero page addressing mode) (Increment memory) - add one to value at zero page address with offset
+
+                switch (cycles) {
+                    case 4:
+                        address_latch = 0x0000;
+                        break;
+                    case 3:
+                        address_latch |= Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        value++;
+                        SetZFLAG(value);
+                        SetNFLAG(value);
+                        bus.Write(address_latch, value);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
             case 0xE8: // INX (Increment X) - Add one to the X register
 
                 switch (cycles) {
@@ -1145,6 +1213,35 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                     case 3:
                         address_latch += Fetch(PC, bus);
                         PC++;
+                        break;
+                    case 2:
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t result = value - 1;
+                        bus.Write(address_latch, result);
+                        SetZFLAG(result);
+                        SetNFLAG(result);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0xD6: // DEC (zero page index x addressing mode) (Decrement Memory) - Decrements value at zero page address with offset and X
+
+                switch (cycles) {
+                    case 5:
+                        address_latch = 0x0000;
+                        break;
+                    case 4:
+                        address_latch |= Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 3:
+                        address_latch += X;
                         break;
                     case 2:
                         break;
@@ -1676,6 +1773,31 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         SetZFLAG(A);
                         SetNFLAG(A);
                         PC++;
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0x35: // AND (zero page index X addressing mode) (Bitwise AND) - Bitwise AND accumulator and value at zero page address with offset and X. Set result to accumulator
+
+                switch (cycles) {
+                    case 3:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2: {
+                        uint8_t low_byte = (address_latch & 0x00FF) + X;
+                        address_latch = 0x0000 + low_byte;
+                        break;
+                    }
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        A = A & value;
+                        SetZFLAG(A);
+                        SetNFLAG(A);
                         break;
                     }
                     default:
