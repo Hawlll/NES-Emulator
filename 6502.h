@@ -222,11 +222,20 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xC9: // CMP (Compare Accumulator) - compare accumulator value with immediate
                 return 2;
                 break;
+            case 0xC5: // CMP (Zero page addressing mode) (Compare Accumulator) - compare accumulator value with value at zero page address with offset
+                return 3;
+                break;
             case 0xE0: // CPX (Compare X) - compare X value with immediate
                 return 2;
                 break;
+            case 0xE4: // CPX (Zero page addressing mode) (Compare X) - compare X value with value at zero page address with offset
+                return 3;
+                break;
             case 0xC0: // CPY (Compare Y) - compare Y with immediate
                 return 2;
+                break;
+            case 0xC4: // CPY (Zero page addressing mode) (Compare Y) - compare Y with value at zero page address with offset
+                return 3;
                 break;
             case 0xEE: // INC (absolute addressing mode) (Increment Memory) - Increments value at absolute address by 1
                 return 6;
@@ -257,6 +266,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0x4C: // JMP (Jump) - Update PC to address formed by next two bytes
                 return 3;
+                break;
+            case 0x6C: // JMP (Indirect addressing mode) Jump - Update PC with address from indirect
+                return 5;
                 break;
             case 0x20: // JSR (Jump to Sub routine) - Push PC to stack and set PC to address formed by next two bytes
                 return 6;
@@ -1124,6 +1136,26 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0xC5: // CMP (Zero page addressing mode) (Compare Accumulator) - compare accumulator value with value at zero page address with offset
+
+                switch (cycles) {
+                    case 2:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t result = A - value;
+
+                        SetCFLAG(A >= value);
+                        SetNFLAG(result);
+                        SetZFLAG(result);
+                        break;
+                    }
+
+                }
+                break;
+
             case 0xE0: // CPX (Compare X) - compare X value with immediate
 
                 switch (cycles) {
@@ -1140,6 +1172,25 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                     default:
                         break;
 
+                }
+                break;
+
+            case 0xE4: // CPX (Zero page addressing mode) (Compare X) - compare X value with value at zero page address with offset
+
+                switch (cycles) {
+                    case 2:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t result = X - value;
+
+                        SetCFLAG(X >= value);
+                        SetNFLAG(result);
+                        SetZFLAG(result);
+                        break;
+                    }
                 }
                 break;
 
@@ -1160,6 +1211,26 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                     default:
                         break;
 
+                }
+                break;
+
+
+            case 0xC4: // CPY (Zero page addressing mode) (Compare Y) - compare Y with value at zero page address with offset
+
+                switch (cycles) {
+                    case 2:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t result = Y - value;
+
+                        SetCFLAG(Y >= value);
+                        SetNFLAG(result);
+                        SetZFLAG(result);
+                        break;
+                    }
                 }
                 break;
 
@@ -1364,6 +1435,35 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         address_latch |= (Fetch(PC, bus) << 8);
                         PC = address_latch;
                         break;
+                    default:
+                        break;
+                }
+                break;
+
+            case 0x6C: // JMP (Indirect addressing mode) Jump - Update PC with address from indirect
+
+                switch (cycles) {
+                    case 4:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 3:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 2:
+                        PC = 0x0000;
+                        PC |= bus.Read(address_latch);
+                        break;
+                    case 1: {
+                        uint8_t lowByte = address_latch & 0x00FF;
+                        lowByte++;
+                        address_latch = address_latch & 0xFF00;
+                        address_latch |= lowByte;
+                        PC |= (bus.Read(address_latch) << 8);
+                        break;
+
+                    }
                     default:
                         break;
                 }
