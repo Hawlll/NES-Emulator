@@ -96,7 +96,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xBD: { // LDA (Absolute index X addressing mode) (Load into Accumulator register) - take value from sum of (absolute address formed by next two bytes) + (X register) and put into accumulator. grants another cycle if page cross
                 uint8_t low_byte = bus.Read(PC+1);
                 uint16_t result = low_byte + X;
-                if (result <= 0xFF) {
+                if (result <= 0x00FF) {
                     return 4;
                 }
                 else{
@@ -107,6 +107,19 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xAD: // LDA (Absolute addressing mode) (load into accumulator register) - take value from absolute address formed by next two bytes and store into accumulator
                 return 4;
                 break;
+            case 0xB1: { // LDA (Indirect Y addressing mode) (load into accumulator register) - take value from indirect and store into accumulator
+                uint8_t lowByte = bus.Read(0x0000 + bus.Read(PC+1));
+                uint8_t highByte = bus.Read(0x0000 + static_cast<uint8_t>(bus.Read(PC+1) + 1));
+                uint16_t address = (highByte << 8) | lowByte;
+                uint16_t result = ((highByte << 8) | lowByte) + Y;
+                if ((address & 0xFF00) == (result & 0xFF00)) {
+                    return 5;
+                }
+                else {
+                    return 6;
+                }
+                break;
+            }
             case 0xA2: // LDX(Load into X register) - take immediate value and load into x register
                 return 2;
                 break;
@@ -118,6 +131,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0xA0: // LDY (load immediate into Y register) - take immediate value and load into y register
                 return 2;
+                break;
+            case 0xA4: // LDY (Zero page addressing mode) (Load into Y register - take value from zero page address with offset and load into y register
+                return 3;
                 break;
             case 0x8D: // STA (Store Accumulator) - take value from accumulator and store into 16 bit address formed with next two bytes
                 return 4;
@@ -139,6 +155,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0x8E: // STX (Store X register) - take value from X register and store into 16 bit address formed with next two bytes
                 return 4;
+                break;
+            case 0x86: // STX (Zero page addressing mode) (Store X Register) - take value from X register and store into zero page address with offset
+                return 3;
                 break;
             case 0x8C: // STY (Store Y register) - take value from Y register and store into 16 bit address formed with next two bytes
                 return 4;
@@ -327,6 +346,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x4A: // LSR (Logical shift right) - Shifts accumulator value right 1 bit. Stores bit 0 in carry.
                 return 2;
                 break;
+            case 0x46: // LSR (Zero page addressing mode) - Shifts value at zero page address with offset right 1 bit. Stores bit 0 in carry
+                return 5;
+                break;
             case 0x2A: // ROL (Rotate left) - Shift accumulator value to left once. Carry goes to bit 0, and bit 7 goes to carry.
                 return 2;
                 break;
@@ -456,6 +478,37 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0xB1: // LDA (Indirect Y addressing mode) (load into accumulator register) - take value from indirect and store into accumulator
+
+                switch (cycles) {
+                    case 5:
+                        break;
+                    case 4: {
+                        address_latch = Fetch(PC, bus) << 8;
+                        PC++;
+                        break;
+                    }
+                    case 3: {
+                        uint8_t value = (address_latch & 0xFF00) >> 8;
+                        uint8_t offset = static_cast<uint8_t>(value);
+                        address_latch |= bus.Read(0x0000+offset);
+                        break;
+                    }
+                    case 2: {
+                        uint8_t value = (address_latch & 0xFF00) >> 8;
+                        uint8_t offset = static_cast<uint8_t>(value+1);
+                        address_latch = ((bus.Read(0x0000+offset) << 8) | (address_latch & 0x00FF)) + Y;
+                        break;
+                    }
+                    case 1:
+                        A = bus.Read(address_latch);
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        break;
+                    default:
+                        break;
+                }
+                break;
 
             case 0xA2: // LDX(Load into X register) - take immediate value and load into x register
 
@@ -525,6 +578,22 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0xA4: // LDY (Zero page addressing mode) (Load into Y register - take value from zero page address with offset and load into y register
+
+                switch (cycles) {
+                    case 2:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 1:
+                        Y = bus.Read(address_latch);
+                        SetZFLAG(Y);
+                        SetNFLAG(Y);
+                        break;
+                    default:
+                        break;
+                }
+                break;
 
             case 0x8D: { // STA (Store Accumulator) - take value from accumulator and store into 16 bit address formed with next two bytes
 
@@ -664,6 +733,21 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         break;
                     case 2:
                         address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1:
+                        bus.Write(address_latch, X);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+            case 0x86: // STX (Zero page addressing mode) (Store X Register) - take value from X register and store into zero page address with offset
+
+                switch (cycles) {
+                    case 2:
+                        address_latch = 0x0000 + Fetch(PC, bus);
                         PC++;
                         break;
                     case 1:
@@ -1648,6 +1732,31 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         SetZFLAG(A);
                         SetNFLAG(false);
                         break;
+                    default:
+                        break;
+                }
+                break;
+
+            case 0x46: // LSR (Zero page addressing mode) - Shifts value at zero page address with offset right 1 bit. Stores bit 0 in carry
+
+                switch (cycles) {
+                    case 4:
+                        address_latch = 0x0000;
+                        break;
+                    case 3:
+                        address_latch += Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        SetCFLAG((value & 0b00000001) > 0);
+                        value = value >> 1;
+                        SetZFLAG(value);
+                        SetNFLAG(false);
+                        break;
+                    }
                     default:
                         break;
                 }
