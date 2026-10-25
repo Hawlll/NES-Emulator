@@ -2,13 +2,5 @@
 Download SLD3 for graphics 
 https://github.com/libsdl-org/SDL/releases?utm_source=chatgpt.com
 
-
-Background Tile and Color Test
-<img width="1656" height="898" alt="image" src="https://github.com/user-attachments/assets/0f500d98-02a1-4b1e-904b-f8f2d1300de1" />
-
-Sprite and Background Test
-<img width="867" height="465" alt="image" src="https://github.com/user-attachments/assets/911bbeef-4df0-4719-8d24-7ab5273e147d" />
-
-Sprite-Background Priority Test (left sprite wins, right sprite loses and only visible through transparent background)
-<img width="781" height="748" alt="image" src="https://github.com/user-attachments/assets/997bded0-9264-45b3-9291-3722149062e3" />
+https://github.com/user-attachments/assets/47f0c340-1240-4e2e-8fb6-79cfa15f13ce
 
