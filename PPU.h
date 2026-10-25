@@ -369,7 +369,8 @@ struct PPU {
             int secondaryBase = spriteCount*4;
             uint16_t spriteY = ppuBus.PrimaryOAMRead(primaryBase);
             int row = static_cast<int>(targetScanline) - ( static_cast<int>(spriteY) + 1);
-            if (row >= 0 && row < 8 && spriteCount < 8) {
+            bool isSprite16 = (PPUCTRL & 0x20);
+            if ( (((row >= 0 && row < 8) && !isSprite16) || (isSprite16 && (row >= 0 && row < 16))) && spriteCount < 8) {
                 if (i == 0) {
                     spriteZeroSelected = true;
                 }
@@ -383,7 +384,7 @@ struct PPU {
                 ppuBus.SecondaryOAMWrite(secondaryBase+3, X);
                 spriteCount += 1;
             }
-            else {
+            else if (spriteCount >= 8) {
                 PPUSTATUS |= (1 << 5); // sprite overflow
                 break;
             }
@@ -399,13 +400,26 @@ struct PPU {
             uint8_t attribute = ppuBus.SecondaryOAMRead(base+2);
             uint8_t X = ppuBus.SecondaryOAMRead(base+3);
 
+            bool isSprite16 = (PPUCTRL & 0x20);
             int row = static_cast<int>(targetScanline) - static_cast<int>(Y) - 1;
             if (attribute & 0x80) { // vertical flip
-                row = 7 - row;
+                row = isSprite16 ? 15 - row : 7 - row;
             }
 
-            uint16_t baseTileAddress = PPUCTRL & 0x08 ? 0x1000 : 0x0000;
-            uint16_t lowByteAddress = baseTileAddress + (tileId * 16) + static_cast<uint8_t>(row);
+            uint16_t baseTileAddress;
+            uint16_t lowByteAddress;
+            if (isSprite16) {
+                uint8_t topTileId = (tileId & 0xFE);
+                uint8_t selectedTile = topTileId + (row >= 8 ? 1: 0);
+                baseTileAddress = tileId & 0x01 ? 0x1000 : 0x0000;
+                lowByteAddress = baseTileAddress + ((selectedTile)*16) + static_cast<uint8_t>(row%8);
+            }
+            else {
+                baseTileAddress = PPUCTRL & 0x08 ? 0x1000 : 0x0000;
+                lowByteAddress = baseTileAddress + (tileId*16) + static_cast<uint8_t>(row);
+            }
+
+
             uint16_t highByteAddress = lowByteAddress + 0x0008;
             uint8_t lowByte = ppuBus.Read(lowByteAddress);
             uint8_t highByte = ppuBus.Read(highByteAddress);
