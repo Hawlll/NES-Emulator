@@ -23,7 +23,7 @@ int main()
 
     NES nes(cpu, ppu, bus);
 
-    cart.Load("rom_tests/test.nes");
+    cart.Load("rom_tests/Donkey Kong Jr. (JU).nes");
 
     cpu.Reset(bus);
 //

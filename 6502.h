@@ -110,7 +110,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xA2: // LDX(Load into X register) - take immediate value and load into x register
                 return 2;
                 break;
-            case 0xA6: // LDX (Load into X register zero page addressing mode) - take value at zero page with offset and load into x register
+            case 0xA6: // LDX (zero page addressing mode) (Load into X register) - take value at zero page with offset and load into x register
                 return 3;
                 break;
             case 0xA0: // LDY (load immediate into Y register) - take immediate value and load into y register
@@ -128,16 +128,22 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x9D: // STA (Absolute index X addressing mode) (Store Accumulator) - take value from accumulator and store into address formed by the next two bytes added to the X register
                 return 5;
                 break;
+            case 0x91: // STA (Indirect Y addressing mode) (Store Accumulator) - take value from accumulator and store into address formed by indirect
+                return 6;
+                break;
             case 0x8E: // STX (Store X register) - take value from X register and store into 16 bit address formed with next two bytes
                 return 4;
                 break;
             case 0x8C: // STY (Store Y register) - take value from Y register and store into 16 bit address formed with next two bytes
                 return 4;
                 break;
+            case 0x84: // STY (zero page addressing mode) (Store Y Register) - take value from Y register and store into zero page with immediate offset
+                return 3;
+                break;
             case 0x69: // ADC (Add with carry) - take immediate value, carry, and add into accumulator register
                 return 2;
                 break;
-            case 0x6D: // ADC (Absolute Addressing mode) - add value from address formed by next two bytes with carry into accumulator
+            case 0x6D: // ADC (Absolute Addressing mode) (Add with carry) - add value from address formed by next two bytes with carry into accumulator
                 return 4;
                 break;
             case 0xE9: // SBC  (Subtract with carry) take immediate value, inverse carry, and subtract from accumulator register
@@ -161,11 +167,14 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xC0: // CPY (Compare Y) - compare Y with immediate
                 return 2;
                 break;
-            case 0xEE: // INC (Increment Memory absolute addressing mode) - Increments value at absolute address by 1
+            case 0xEE: // INC (absolute addressing mode) (Increment Memory) - Increments value at absolute address by 1
                 return 6;
                 break;
-            case 0xCE: // DEC (Decrement Memory absolute addressing mode) - Decrements value at absolute address by 1
+            case 0xCE: // DEC (absolute addressing mode) (Decrement Memory) - Decrements value at absolute address by 1
                 return 6;
+                break;
+            case 0xC6: // DEC (Zero page addressing mode) (Decrement Memory) - Decrements value at zero page address with offset
+                return 5;
                 break;
             case 0xE8: // INX (Increment X) - Add one to the X register
                 return 2;
@@ -291,16 +300,16 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x78: // SEI (Set interrupt flag) - sets interrupt flag
                 return 2;
                 break;
-            case 0x29: // AND (Bitwise AND immediate addressing mode) - Bitwise AND accumulator and immediate. Set result to accumulator
+            case 0x29: // AND (immediate addressing mode) (Bitwise AND) - Bitwise AND accumulator and immediate. Set result to accumulator
                 return 2;
                 break;
-            case 0x09: // ORA (Bitwise OR immediate addressing mode) - Bitwise OR accumulator and immediate. Set result to accumulator
+            case 0x09: // ORA (immediate addressing mode) (Bitwise OR) - Bitwise OR accumulator and immediate. Set result to accumulator
                 return 2;
                 break;
-            case 0x01: // ORA (Bitwise OR indirect X addressing mode) - Bitwise OR accumulator and indirect. Set result to accumulator
+            case 0x01: // ORA (indirect X addressing mode) (Bitwise OR) - Bitwise OR accumulator and indirect. Set result to accumulator
                 return 6;
                 break;
-            case 0x49: // EOR (Bitwise XOR immediate addressing mode) - Bitwise XOR accumulator and immediate. Set result to accumulator
+            case 0x49: // EOR (immediate addressing mode) (Bitwise XOR) - Bitwise XOR accumulator and immediate. Set result to accumulator
                 return 2;
                 break;
             case 0x0A: // ASL (Arithmetic Shift Left) - Shifts accumulator value left 1 bit. Stores bit 7 in carry.
@@ -315,7 +324,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x6A: // ROR (Rotate right) - Shift accumulator value to right once. Carry goes to bit 7, and bit 0 goes to carry.
                 return 2;
                 break;
-            case 0x2C: // BIT (Bit test absolute addressing mode) - Bit mask from absolute address. Affects Zero, Overflow, and negative flags only.
+            case 0x2C: // BIT (absolute addressing mode) (Bit test) - Bit mask from absolute address. Affects Zero, Overflow, and negative flags only.
                 return 4;
                 break;
             case 0xEA: // NOP (No operation) - Does nothing
@@ -561,6 +570,37 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+
+            case 0x91: // STA (Indirect Y addressing mode) (Store Accumulator) - take value from accumulator and store into address formed by indirect
+                // essentially read byte from zeropage and offset, and then read the byte after that to construct address. add Y to resulting address and store the value of A there.
+
+                switch (cycles) {
+                    case 5:
+                        address_latch = Fetch(PC, bus) << 8;
+                        PC++;
+                        break;
+                    case 4: {
+                        uint8_t value = (address_latch & 0xFF00) >> 8;
+                        uint8_t offset = static_cast<uint8_t>(value);
+                        address_latch |= bus.Read(0x0000+offset);
+                        break;
+                    }
+                    case 3: {
+                        uint8_t value = (address_latch & 0xFF00) >> 8;
+                        uint8_t offset = static_cast<uint8_t>(value+1);
+                        address_latch = (bus.Read(0x0000+offset) << 8) | (address_latch & 0x00FF);
+                        break;
+                    }
+                    case 2: {
+                        address_latch += Y;
+                        break;
+                    }
+                    case 1:
+                        bus.Write(address_latch, A);
+                        break;
+                }
+                break;
+
             case 0x8E: // STX (Store X register) - take value from X register and store into 16 bit address formed with next two bytes
 
                 switch (cycles) {
@@ -589,6 +629,22 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         break;
                     case 2:
                         address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1:
+                        bus.Write(address_latch, Y);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0x84: // STY (Store Y Register zero page addressing mode) - take value from Y register and store into zero page with immediate offset
+
+                switch (cycles) {
+                    case 2:
+                        address_latch = 0x0000 + Fetch(PC, bus);
                         PC++;
                         break;
                     case 1:
@@ -875,6 +931,30 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         bus.Write(address_latch, value);
                         SetZFLAG(value);
                         SetNFLAG(value);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+            case 0xC6: // DEC (Zero page addressing mode) (Decrement Memory) - Decrements value at zero page address with offset
+
+                switch (cycles) {
+                    case 4:
+                        address_latch = 0x0000;
+                        break;
+                    case 3:
+                        address_latch += Fetch(PC, bus);
+                        break;
+                    case 2:
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t result = value - 1;
+                        bus.Write(address_latch, result);
+                        SetZFLAG(result);
+                        SetNFLAG(result);
                         break;
                     }
                     default:
