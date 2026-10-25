@@ -217,11 +217,17 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
             }
+            case 0x75: // ADC (Zero page index X addressing mode) (Add with carry) - add value from zero page address with offset and X and carry into accumulator
+                return 4;
+                break;
             case 0xE9: // SBC  (Subtract with carry) take immediate value, inverse carry, and subtract from accumulator register
                 return 2;
                 break;
             case 0xE5: // SBC (zero page addressing mode) (Subtract with carry) - take value from zero page address with offset, inverse carry, and subtract from accumulator register
                 return 3;
+                break;
+            case 0xF5: // SBC (Zero page index X addressing mode) (Subtract with carry) - take value from zero page address with offset and X, inverse carry, and subtract from accumulator register
+                return 4;
                 break;
             case 0xED: // SBC (Absolute addressing mode) (Subtract with carry) - take value from address formed by the next two bytes, inverse carry, and subtract from accumulator register
                 return 4;
@@ -281,8 +287,14 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xD6: // DEC (zero page index x addressing mode) (Decrement Memory) - Decrements value at zero page address with offset and X
                 return 6;
                 break;
+            case 0xDE: // DEC (Absolute X addressing mode) (Decrement Memory) - Decrements value at address formed by next two bytes and X
+                return 7;
+                break;
             case 0xE6: // INC (zero page addressing mode) (Increment memory) - add one to value at zero page address with offset
                 return 5;
+                break;
+            case 0xF6: // INC (zero page index X addressing mode) (Increment memory) - add one to value at zero page with offset and X
+                return 6;
                 break;
             case 0xE8: // INX (Increment X) - Add one to the X register
                 return 2;
@@ -1094,6 +1106,40 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         break;
                 }
                 break;
+
+            case 0x75: // ADC (Zero page index X addressing mode) (Add with carry) - add value from zero page address with offset and X and carry into accumulator
+
+                switch (cycles) {
+                    case 3:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2: {
+                        uint8_t lowByte = address_latch & 0x00FF;
+                        lowByte += X;
+                        address_latch &= 0xFF00;
+                        address_latch |= lowByte;
+                        break;
+                    }
+                    case 1: {
+                        uint8_t carry = (status & C_FLAG) > 0;
+                        uint16_t operation_result = A + bus.Read(address_latch) + carry;
+                        uint8_t A_prev = A;
+
+                        A = operation_result & 0x00FF;
+
+                        SetNFLAG(A);
+                        SetZFLAG(A);
+                        SetCFLAG(operation_result);
+                        SetVFLAG(bus.Read(address_latch), A_prev, A);
+                        break;
+                    }
+                    default:
+                        break;
+
+                }
+                break;
+
             case 0xE9: // SBC (Subtract with Carry) - take immediate value, NOT carry, and subtract from accumulator register
                        // It is NOT carry because its the flag is intrepreted as its inverse for substraction (C = 1 means no borrow, C = 0 means borrow happened)
                        // That is why usually SEC is followed before SBC
@@ -1174,6 +1220,42 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         break;
                 }
                 break;
+
+
+            case 0xF5: // SBC (Zero page index X addressing mode) (Subtract with carry) - take value from zero page address with offset and X, inverse carry, and subtract from accumulator register
+
+                switch (cycles) {
+                    case 3:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2: {
+                        uint8_t lowByte = address_latch & 0x00FF;
+                        lowByte += X;
+                        address_latch &= 0xFF00;
+                        address_latch |= lowByte;
+                        break;
+                    }
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t carry = status & C_FLAG;
+                        uint8_t A_prev = A;
+
+                        A = A - value - !carry;
+
+                        SetNFLAG(A);
+                        SetZFLAG(A);
+                        SetCFLAG( A_prev >= (value + !carry) );
+                        SetVFLAG(((A_prev ^ A) & (A_prev ^ value) & 0x80) != 0);
+                        break;
+
+                    }
+                    default:
+                        break;
+
+                }
+                break;
+
 
             case 0x18: // CLC (Clear Carry) - Clears the carry flag in status register
 
@@ -1489,6 +1571,38 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
 
 
+            case 0xF6: // INC (zero page index X addressing mode) (Increment memory) - add one to value at zero page with offset and X
+
+                switch (cycles) {
+                    case 5:
+                        break;
+                    case 4:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 3: {
+                        uint8_t lowByte = address_latch & 0x00FF;
+                        lowByte += X;
+                        address_latch &= 0xFF00;
+                        address_latch |= lowByte;
+                        break;
+                    }
+                    case 2: {
+                        uint8_t value = bus.Read(address_latch);
+                        value += 1;
+                        bus.Write(address_latch, value);
+                        SetZFLAG(value);
+                        SetNFLAG(value);
+                        break;
+                    }
+                    case 1:
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+
             case 0xCE: // DEC (Decrement Memory absolute addressing mode) - Decrements value at absolute address by 1
 
                 switch (cycles) {
@@ -1575,6 +1689,36 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0xDE: // DEC (Absolute X addressing mode) (Decrement Memory) - Decrements value at address formed by next two bytes and X
+
+                switch (cycles) {
+                    case 6:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 5:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        break;
+                    case 4:
+                        address_latch += X;
+                        break;
+                    case 3:
+                        break;
+                    case 2:
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t result = value - 1;
+                        bus.Write(address_latch, result);
+                        SetZFLAG(result);
+                        SetNFLAG(result);
+                        break;
+                    }
+                    default:
+                        break;
+
+                }
+                break;
 
             case 0x4C: // JMP (Jump) - Update PC to address formed by next two bytes
 
