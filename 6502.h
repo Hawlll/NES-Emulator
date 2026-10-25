@@ -131,7 +131,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
             }
-            case 0xA2: // LDX(Load into X register) - take immediate value and load into x register
+            case 0xA2: // LDX (Load into X register) - take immediate value and load into x register
                 return 2;
                 break;
             case 0xA6: // LDX (zero page addressing mode) (Load into X register) - take value at zero page with offset and load into x register
@@ -149,6 +149,22 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xB4: // LDY (Zero page index X addressing mode) (Load into Y register) take value from zero page address with Y as offset and load into y register
                 return 4;
                 break;
+            case 0xAC: // LDY (Absolute addressing mode) (Load into Y register) - take value from address formed by next two bytes and load into y register
+                return 4;
+                break;
+            case 0xBC: { // LDY (Absolute index X addressing mode) (Load into Y register) - take value from address formed by next two bytes and X register and load into y register
+                uint8_t lowByte = bus.Read(PC+1);
+                uint8_t highByte = bus.Read(PC+2);
+                uint8_t address = (highByte << 8) | lowByte;
+                uint8_t result = address + X;
+                if ((address & 0xFF00) == (result & 0xFF00)) {
+                    return 4;
+                }
+                else {
+                    return 5;
+                }
+                break;
+            }
             case 0x8D: // STA (Store Accumulator) - take value from accumulator and store into 16 bit address formed with next two bytes
                 return 4;
                 break;
@@ -190,6 +206,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0xE9: // SBC  (Subtract with carry) take immediate value, inverse carry, and subtract from accumulator register
                 return 2;
+                break;
+            case 0xE5: // SBC (zero page addressing mode) (Subtract with carry) - take value from zero page address with offset, inverse carry, and subtract from accumulator register
+                return 3;
                 break;
             case 0x18: // CLC (Clear Carry) - Clears the carry flag in status register
                 return 2;
@@ -353,6 +372,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0x35: // AND (zero page index X addressing mode) (Bitwise AND) - Bitwise AND accumulator and value at zero page address with offset and X. Set result to accumulator
                 return 4;
+                break;
+            case 0x25: // AND (Zero page addressing mode) (Bitwise AND) - Bitwise AND accumulator and value at zero page address with offset. Set result to accumulator
+                return 3;
                 break;
             case 0x09: // ORA (immediate addressing mode) (Bitwise OR) - Bitwise OR accumulator and immediate. Set result to accumulator
                 return 2;
@@ -670,6 +692,51 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+
+            case 0xAC: // LDY (Absolute addressing mode) (Load into Y register) - take value from address formed by next two bytes and load into y register
+
+                switch (cycles) {
+                    case 3:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1:
+                        Y = bus.Read(address_latch);
+                        SetZFLAG(Y);
+                        SetNFLAG(Y);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+            case 0xBC: // LDY (Absolute index X addressing mode) (Load into Y register) - take value from address formed by next two bytes and X register and load into y register
+
+                switch (cycles) {
+                    case 4:
+                        break; // extra cycle due to page cross
+                    case 3:
+                        address_latch = 0x0000 + Fetch(PC, bus) + X;
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch = (Fetch(PC, bus) << 8) + address_latch;
+                        PC++;
+                        break;
+                    case 1:
+                        Y = bus.Read(address_latch);
+                        SetZFLAG(Y);
+                        SetNFLAG(Y);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
             case 0x8D: { // STA (Store Accumulator) - take value from accumulator and store into 16 bit address formed with next two bytes
 
                 switch (cycles) {
@@ -977,6 +1044,33 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         break;
                 }
                 break;
+
+            case 0xE5: // SBC (zero page addressing mode) (Subtract with carry) - take value from zero page address with offset, inverse carry, and subtract from accumulator register
+
+                switch (cycles) {
+                    case 2:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t carry = status & C_FLAG;
+                        uint8_t A_prev = A;
+
+                        A = A - value - !carry;
+
+                        SetNFLAG(A);
+                        SetZFLAG(A);
+                        SetCFLAG( A_prev >= (value + !carry) );
+                        SetVFLAG(((A_prev ^ A) & (A_prev ^ value) & 0x80) != 0);
+                        break;
+
+                    }
+                    default:
+                        break;
+                }
+                break;
+
             case 0x18: // CLC (Clear Carry) - Clears the carry flag in status register
 
                 switch (cycles) {
@@ -1793,6 +1887,26 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         address_latch = 0x0000 + low_byte;
                         break;
                     }
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        A = A & value;
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0x25: // AND (Zero page addressing mode) (Bitwise AND) - Bitwise AND accumulator and value at zero page address with offset. Set result to accumulator
+
+                switch (cycles) {
+                    case 2:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
                     case 1: {
                         uint8_t value = bus.Read(address_latch);
                         A = A & value;
