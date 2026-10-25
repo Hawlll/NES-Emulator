@@ -204,11 +204,27 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x65: // ADC (Zero page addressing mode) (Add with carry) - add value from zero page address with offset and carry into accumulator
                 return 3;
                 break;
+            case 0x79: { // ADC (Absolute index Y addressing mode) (Add with carry) - add value from address formed by next two bytes and Y and carry into accumulator
+                uint8_t lowByte = bus.Read(PC+1);
+                uint8_t highByte = bus.Read(PC+2);
+                uint16_t address = (highByte << 8) | lowByte;
+                uint16_t result = address + Y;
+                if ((address & 0xFF00) == (result & 0xFF00)) {
+                    return 4;
+                }
+                else {
+                    return 5;
+                }
+                break;
+            }
             case 0xE9: // SBC  (Subtract with carry) take immediate value, inverse carry, and subtract from accumulator register
                 return 2;
                 break;
             case 0xE5: // SBC (zero page addressing mode) (Subtract with carry) - take value from zero page address with offset, inverse carry, and subtract from accumulator register
                 return 3;
+                break;
+            case 0xED: // SBC (Absolute addressing mode) (Subtract with carry) - take value from address formed by the next two bytes, inverse carry, and subtract from accumulator register
+                return 4;
                 break;
             case 0x18: // CLC (Clear Carry) - Clears the carry flag in status register
                 return 2;
@@ -224,6 +240,22 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0xC5: // CMP (Zero page addressing mode) (Compare Accumulator) - compare accumulator value with value at zero page address with offset
                 return 3;
+                break;
+            case 0xD9: { // CMP (Absolute index Y addressing mode) (Compare Accumulator) - compare accumulator value with value formed by the next two bytes and added by Y
+                uint8_t lowByte = bus.Read(PC+1);
+                uint8_t highByte = bus.Read(PC+2);
+                uint16_t address = (highByte << 8) | lowByte;
+                uint16_t result = address + Y;
+                if ((address & 0xFF00) == (result & 0xFF00)) {
+                    return 4;
+                }
+                else {
+                    return 5;
+                }
+                break;
+            }
+            case 0xD5: // CMP (Zero page index X addressing mode) (Compare accumulator) - compare accumulator value with value at zero page addresss with offset and X
+                return 4;
                 break;
             case 0xE0: // CPX (Compare X) - compare X value with immediate
                 return 2;
@@ -1031,8 +1063,37 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0x79: // ADC (Absolute index Y addressing mode) (Add with carry) - add value from address formed by next two bytes and Y and carry into accumulator
 
+                switch (cycles) {
+                    case 4:
+                        break;
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        address_latch += Y;
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t carry = (status & C_FLAG) > 0;
+                        uint16_t operation_result = A + bus.Read(address_latch) + carry;
+                        uint8_t A_prev = A;
 
+                        A = operation_result & 0x00FF;
+
+                        SetNFLAG(A);
+                        SetZFLAG(A);
+                        SetCFLAG(operation_result);
+                        SetVFLAG(bus.Read(address_latch), A_prev, A);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
             case 0xE9: // SBC (Subtract with Carry) - take immediate value, NOT carry, and subtract from accumulator register
                        // It is NOT carry because its the flag is intrepreted as its inverse for substraction (C = 1 means no borrow, C = 0 means borrow happened)
                        // That is why usually SEC is followed before SBC
@@ -1062,6 +1123,37 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 switch (cycles) {
                     case 2:
                         address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t carry = status & C_FLAG;
+                        uint8_t A_prev = A;
+
+                        A = A - value - !carry;
+
+                        SetNFLAG(A);
+                        SetZFLAG(A);
+                        SetCFLAG( A_prev >= (value + !carry) );
+                        SetVFLAG(((A_prev ^ A) & (A_prev ^ value) & 0x80) != 0);
+                        break;
+
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0xED: // SBC (Absolute addressing mode) (Subtract with carry) - take value from address formed by the next two bytes, inverse carry, and subtract from accumulator register
+
+                switch (cycles) {
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
                         PC++;
                         break;
                     case 1: {
@@ -1155,6 +1247,62 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
 
                 }
                 break;
+
+
+            case 0xD9:  // CMP (Absolute index Y addressing mode) (Compare Accumulator) - compare accumulator value with value formed by the next two bytes and added by Y
+
+                switch (cycles) {
+                    case 4:
+                        break;
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch+Y);
+                        uint8_t result = A - value;
+
+                        SetCFLAG(A >= value);
+                        SetNFLAG(result);
+                        SetZFLAG(result);
+                        break;
+                    }
+                }
+                break;
+
+
+            case 0xD5: // CMP (Zero page index X addressing mode) (Compare accumulator) - compare accumulator value with value at zero page addresss with offset and X
+
+                switch (cycles) {
+                    case 3:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2: {
+                        uint8_t lowByte = address_latch & 0x00FF;
+                        lowByte += X;
+                        address_latch &= 0xFF00;
+                        address_latch |= lowByte;
+                        break;
+                    }
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t result = A - value;
+
+                        SetCFLAG(A >= value);
+                        SetNFLAG(result);
+                        SetZFLAG(result);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
 
             case 0xE0: // CPX (Compare X) - compare X value with immediate
 
@@ -1405,9 +1553,13 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         address_latch |= Fetch(PC, bus);
                         PC++;
                         break;
-                    case 3:
-                        address_latch += X;
+                    case 3: {
+                        uint8_t lowByte = address_latch & 0x00FF;
+                        lowByte += X;
+                        address_latch &= 0xFF00;
+                        address_latch |= lowByte;
                         break;
+                    }
                     case 2:
                         break;
                     case 1: {
