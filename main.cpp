@@ -5,6 +5,7 @@
 #include "NES.h"
 #include <chrono>
 #include <thread>
+#include <bitset>
 
 int main()
 {
@@ -86,6 +87,8 @@ int main()
 
     bool running = true;
     SDL_Event event;
+    int numKeys;
+    uint8_t buttonState = 0x00;
 
     std::vector<uint8_t> screenPixels(256*240);
     auto startTime = std::chrono::steady_clock::now();
@@ -97,6 +100,19 @@ int main()
                 running = false;
             }
         }
+
+        const bool* keystate = SDL_GetKeyboardState(&numKeys);
+        buttonState |= (static_cast<uint8_t>(keystate[SDL_SCANCODE_Z])); // A
+        buttonState |= (static_cast<uint8_t>(keystate[SDL_SCANCODE_X]) << 1); // A
+        buttonState |= (static_cast<uint8_t>(keystate[SDL_SCANCODE_LSHIFT]) << 2); // select
+        buttonState |= (static_cast<uint8_t>(keystate[SDL_SCANCODE_RSHIFT]) << 3); // start
+        buttonState |= (static_cast<uint8_t>(keystate[SDL_SCANCODE_UP]) << 4); // UP button
+        buttonState |= (static_cast<uint8_t>(keystate[SDL_SCANCODE_DOWN]) << 5); // DOWN button
+        buttonState |= (static_cast<uint8_t>(keystate[SDL_SCANCODE_LEFT]) << 6); // LEFT button
+        buttonState |= (static_cast<uint8_t>(keystate[SDL_SCANCODE_RIGHT]) << 7); // RIGHT button
+
+        std::cout << (int)buttonState << std::endl;
+
 
         while (!(ppu.scanline == 240 && ppu.dots == 0)) {
             nes.Clock();
@@ -122,6 +138,7 @@ int main()
         SDL_RenderClear(renderer);
         SDL_RenderTexture(renderer, texture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
+        buttonState = 0x00;
     }
 
     SDL_DestroyTexture(texture);
