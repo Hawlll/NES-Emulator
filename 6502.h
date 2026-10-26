@@ -445,6 +445,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x29: // AND (immediate addressing mode) (Bitwise AND) - Bitwise AND accumulator and immediate. Set result to accumulator
                 return 2;
                 break;
+            case 0x2D: // AND (Absolute addressing mode) (Bitwise AND) - Bitwise AND accumulator with value form address formed by next two bytes. Set result to accumulator
+                return 4;
+                break;
             case 0x35: // AND (zero page index X addressing mode) (Bitwise AND) - Bitwise AND accumulator and value at zero page address with offset and X. Set result to accumulator
                 return 4;
                 break;
@@ -2389,6 +2392,28 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0x2D: // AND (Absolute addressing mode) (Bitwise AND) - Bitwise AND accumulator with value form address formed by next two bytes. Set result to accumulator
+
+                switch (cycles) {
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        A = A & value;
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
 
             case 0x35: // AND (zero page index X addressing mode) (Bitwise AND) - Bitwise AND accumulator and value at zero page address with offset and X. Set result to accumulator
 
