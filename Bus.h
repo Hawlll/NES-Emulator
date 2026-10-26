@@ -3,14 +3,16 @@
 #include "Cartridge.h"
 #include "PPU.h"
 #include <iostream>
+#include "Controller.h"
 
 struct Bus {
 
     Memory& mem;
     Cartridge& rom;
     PPU& ppu;
+    Controller& crl;
 
-    Bus (Memory& memory, Cartridge& rm, PPU& p) : mem(memory), rom(rm), ppu(p) {}
+    Bus (Memory& memory, Cartridge& rm, PPU& p, Controller& c) : mem(memory), rom(rm), ppu(p), crl(c) {}
 
     uint8_t Read(uint16_t Address) { // NES memory map
 
@@ -24,6 +26,9 @@ struct Bus {
         }
 
         else if (Address >= 0x4000 && Address <= 0x401F) { // Audio Processing Units and Input/Output
+            if (Address == 0x4016) { // controller port 1
+                return crl.Fetch();
+            }
             return 0x00;
 
         }
@@ -58,6 +63,9 @@ struct Bus {
         }
 
         else if (Address >= 0x4000 && Address <= 0x4017) { // apu and i/o
+            if (Address == 0x4016) { // controller port 1
+                crl.UpdateLatch(Value);
+            }
         }
 
         else if (Address >= 0x4020) { // Cartridge

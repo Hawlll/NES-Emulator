@@ -1,3 +1,4 @@
+#pragma once
 
 struct Controller {
     // buttons are A, B, select, start, up, down, left, and right

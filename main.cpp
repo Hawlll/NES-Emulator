@@ -6,6 +6,7 @@
 #include <chrono>
 #include <thread>
 #include <bitset>
+#include "Controller.h"
 
 int main()
 {
@@ -18,11 +19,12 @@ int main()
     Memory secondaryOAM(32);
 
     Cartridge cart;
+    Controller crl;
 
     PPUBus ppuBus(cart, nametableRam, paletteRam, primaryOAM, secondaryOAM);
     PPU ppu(ppuBus);
 
-    Bus bus(cpuRam, cart, ppu);
+    Bus bus(cpuRam, cart, ppu, crl);
 
     NES nes(cpu, ppu, bus);
 
@@ -110,8 +112,7 @@ int main()
         buttonState |= (static_cast<uint8_t>(keystate[SDL_SCANCODE_DOWN]) << 5); // DOWN button
         buttonState |= (static_cast<uint8_t>(keystate[SDL_SCANCODE_LEFT]) << 6); // LEFT button
         buttonState |= (static_cast<uint8_t>(keystate[SDL_SCANCODE_RIGHT]) << 7); // RIGHT button
-
-        std::cout << (int)buttonState << std::endl;
+        crl.UpdateLiveState(buttonState);
 
 
         while (!(ppu.scanline == 240 && ppu.dots == 0)) {
