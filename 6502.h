@@ -250,11 +250,27 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xC5: // CMP (Zero page addressing mode) (Compare Accumulator) - compare accumulator value with value at zero page address with offset
                 return 3;
                 break;
+            case 0xCD: // CMP (Absolute addressing mode) (Compare Accumulator) - Compare accumulator value with value formed by the next two bytes
+                return 4;
+                break;
             case 0xD9: { // CMP (Absolute index Y addressing mode) (Compare Accumulator) - compare accumulator value with value formed by the next two bytes and added by Y
                 uint8_t lowByte = bus.Read(PC+1);
                 uint8_t highByte = bus.Read(PC+2);
                 uint16_t address = (highByte << 8) | lowByte;
                 uint16_t result = address + Y;
+                if ((address & 0xFF00) == (result & 0xFF00)) {
+                    return 4;
+                }
+                else {
+                    return 5;
+                }
+                break;
+            }
+            case 0xDD: { // CMP (Absolute index X addressing mode) (Compare Accumulator) - compare accumulator value with value formed by the next two bytes and added by X
+                uint8_t lowByte = bus.Read(PC+1);
+                uint8_t highByte = bus.Read(PC+2);
+                uint16_t address = (highByte << 8) | lowByte;
+                uint16_t result = address + X;
                 if ((address & 0xFF00) == (result & 0xFF00)) {
                     return 4;
                 }
@@ -476,6 +492,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0x2C: // BIT (absolute addressing mode) (Bit test) - Bit mask from absolute address. Affects Zero, Overflow, and negative flags only.
                 return 4;
+                break;
+            case 0x24: // BIT (zero page addressing mode) (Bit test) - Bit mask from value at zero page address with offset. Affects zero, overflow, and negative flags only
+                return 3;
                 break;
             case 0xEA: // NOP (No operation) - Does nothing
                 return 2;
@@ -1377,6 +1396,32 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
 
 
+            case 0xCD: // CMP (Absolute addressing mode) (Compare Accumulator) - Compare accumulator value with value formed by the next two bytes
+
+                switch (cycles) {
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch+Y);
+                        uint8_t result = A - value;
+
+                        SetCFLAG(A >= value);
+                        SetNFLAG(result);
+                        SetZFLAG(result);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+
             case 0xD9:  // CMP (Absolute index Y addressing mode) (Compare Accumulator) - compare accumulator value with value formed by the next two bytes and added by Y
 
                 switch (cycles) {
@@ -1399,9 +1444,37 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         SetZFLAG(result);
                         break;
                     }
+                    default:
+                        break;
                 }
                 break;
 
+            case 0xDD: // CMP (Absolute index X addressing mode) (Compare Accumulator) - compare accumulator value with value formed by the next two bytes and added by X
+
+                switch (cycles) {
+                    case 4:
+                        break;
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch+X);
+                        uint8_t result = A - value;
+
+                        SetCFLAG(A >= value);
+                        SetNFLAG(result);
+                        SetZFLAG(result);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
 
             case 0xD5: // CMP (Zero page index X addressing mode) (Compare accumulator) - compare accumulator value with value at zero page addresss with offset and X
 
@@ -2640,6 +2713,25 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         break;
                     case 2:
                         address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        SetVFLAG((value & V_FLAG) > 0);
+                        SetZFLAG((A & value) == 0);
+                        SetNFLAG((value & N_FLAG) > 0);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+            case 0x24: // BIT (zero page addressing mode) (Bit test) - Bit mask from value at zero page address with offset. Affects zero, overflow, and negative flags only
+
+                switch (cycles) {
+                    case 2:
+                        address_latch = 0x0000 + Fetch(PC, bus);
                         PC++;
                         break;
                     case 1: {
