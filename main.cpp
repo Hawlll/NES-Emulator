@@ -3,6 +3,8 @@
 #include <iostream>
 #include <SDL3/SDL.h>
 #include "NES.h"
+#include <chrono>
+#include <thread>
 
 int main()
 {
@@ -86,6 +88,8 @@ int main()
     SDL_Event event;
 
     std::vector<uint8_t> screenPixels(256*240);
+    auto startTime = std::chrono::steady_clock::now();
+    const std::chrono::duration<double, std::milli> frameTime(1000.0 / 60.0);
 
     while (running) {
         while (SDL_PollEvent(&event)) {
@@ -97,19 +101,27 @@ int main()
         while (!(ppu.scanline == 240 && ppu.dots == 0)) {
             nes.Clock();
         }
+        nes.Clock();
+
+        auto endTime = std::chrono::steady_clock::now();
+        auto elapsedTime = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(endTime - startTime); // ensuring 1 frame every 16.6 milliseconds or 60 FPS
+
+        if (elapsedTime < frameTime) {
+            std::this_thread::sleep_for(frameTime - elapsedTime);
+        }
 
         for (size_t y = 0; y < 240; y++) {
             for (size_t x = 0; x < 256; x++) {
                 screenPixels[y * 256 + x] = ppu.frameBuffer[y][x];
             }
         }
+        startTime = std::chrono::steady_clock::now();
 
         SDL_UpdateTexture(texture, nullptr, screenPixels.data(), width * (int)sizeof(Uint8));
 
         SDL_RenderClear(renderer);
         SDL_RenderTexture(renderer, texture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
-        nes.Clock();
     }
 
     SDL_DestroyTexture(texture);
