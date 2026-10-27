@@ -143,8 +143,8 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xBE: { // LDX (Absolute index Y addressing mode) (Load into X register) - take value from address formed by next two bytes and Y register and load into X register
                 uint8_t lowByte = bus.Read(PC+1);
                 uint8_t highByte = bus.Read(PC+2);
-                uint8_t address = (highByte << 8) | lowByte;
-                uint8_t result = address + Y;
+                uint16_t address = (highByte << 8) | lowByte;
+                uint16_t result = address + Y;
                 if ((address & 0xFF00) == (result & 0xFF00)) {
                     return 4;
                 }
@@ -168,8 +168,8 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xBC: { // LDY (Absolute index X addressing mode) (Load into Y register) - take value from address formed by next two bytes and X register and load into y register
                 uint8_t lowByte = bus.Read(PC+1);
                 uint8_t highByte = bus.Read(PC+2);
-                uint8_t address = (highByte << 8) | lowByte;
-                uint8_t result = address + X;
+                uint16_t address = (highByte << 8) | lowByte;
+                uint16_t result = address + X;
                 if ((address & 0xFF00) == (result & 0xFF00)) {
                     return 4;
                 }
@@ -367,7 +367,15 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0xF0: // BEQ (Branch if equal) - Increment PC by immediate signed offset if zero flag is on
                 if (status & Z_FLAG) {
-                    return 3;
+                    uint16_t address = PC+2;
+                    int8_t offset = bus.Read(PC+1);
+                    uint16_t result = PC + 2 + offset;
+                    if ((address & 0xFF00) == (result & 0xFF00)) {
+                        return 3; // branch taken
+                    }
+                    else {
+                        return 4; // page cross
+                    }
                 }
                 else {
                     return 2;
@@ -375,7 +383,15 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0xD0: // BNE (Branch if not equal) - Increment PC by immediate signed offset if zero flag is clear
                 if ((status & Z_FLAG) < 1) {
-                    return 3;
+                    uint16_t address = PC+2;
+                    int8_t offset = bus.Read(PC+1);
+                    uint16_t result = PC + 2 + offset;
+                    if ((address & 0xFF00) == (result & 0xFF00)) {
+                        return 3; // branch taken
+                    }
+                    else {
+                        return 4; // page cross
+                    }
                 }
                 else {
                     return 2;
@@ -383,7 +399,15 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0x90: // BCC (Branch if carry clear) - Increment PC by immediate signed offset if carry flag is clear
                 if ((status & C_FLAG) < 1) {
-                    return 3;
+                    uint16_t address = PC+2;
+                    int8_t offset = bus.Read(PC+1);
+                    uint16_t result = PC + 2 + offset;
+                    if ((address & 0xFF00) == (result & 0xFF00)) {
+                        return 3; // branch taken
+                    }
+                    else {
+                        return 4; // page cross
+                    }
                 }
                 else {
                     return 2;
@@ -391,7 +415,15 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0xB0: // BCS (Branch if carry set) - Increment PC by immediate signed offset if carry flag is set
                 if (status & C_FLAG) {
-                    return 3;
+                    uint16_t address = PC+2;
+                    int8_t offset = bus.Read(PC+1);
+                    uint16_t result = PC + 2 + offset;
+                    if ((address & 0xFF00) == (result & 0xFF00)) {
+                        return 3; // branch taken
+                    }
+                    else {
+                        return 4; // page cross
+                    }
                 }
                 else {
                     return 2;
@@ -399,7 +431,15 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0x50: // BVC (Branch if overflow clear) - Increment PC by immediate signed offset if overflow flag is clear
                 if ((status & V_FLAG) < 1) {
-                    return 3;
+                    uint16_t address = PC+2;
+                    int8_t offset = bus.Read(PC+1);
+                    uint16_t result = PC + 2 + offset;
+                    if ((address & 0xFF00) == (result & 0xFF00)) {
+                        return 3; // branch taken
+                    }
+                    else {
+                        return 4; // page cross
+                    }
                 }
                 else {
                     return 2;
@@ -407,7 +447,15 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0x70: // BVS (Branch if overflow set) - Increment PC by immediate signed offset if overflow flag is set
                 if (status & V_FLAG) {
-                    return 3;
+                    uint16_t address = PC+2;
+                    int8_t offset = bus.Read(PC+1);
+                    uint16_t result = PC + 2 + offset;
+                    if ((address & 0xFF00) == (result & 0xFF00)) {
+                        return 3; // branch taken
+                    }
+                    else {
+                        return 4; // page cross
+                    }
                 }
                 else {
                     return 2;
@@ -415,7 +463,15 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0x30: // BMI (Branch if minus) - Increment PC by immediate signed offset if negative flag is set
                 if (status & N_FLAG) {
-                    return 3;
+                    uint16_t address = PC+2;
+                    int8_t offset = bus.Read(PC+1);
+                    uint16_t result = PC + 2 + offset;
+                    if ((address & 0xFF00) == (result & 0xFF00)) {
+                        return 3; // branch taken
+                    }
+                    else {
+                        return 4; // page cross
+                    }
                 }
                 else {
                     return 2;
@@ -423,7 +479,15 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0x10: // BPL (Branch if plus) - Increment PC by immediate signed offset if negative flag is clear
                 if ((status & N_FLAG) < 1) {
-                    return 3;
+                    uint16_t address = PC+2;
+                    int8_t offset = bus.Read(PC+1);
+                    uint16_t result = PC + 2 + offset;
+                    if ((address & 0xFF00) == (result & 0xFF00)) {
+                        return 3; // branch taken
+                    }
+                    else {
+                        return 4; // page cross
+                    }
                 }
                 else {
                     return 2;
@@ -477,8 +541,8 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x3D: { // AND (Absolute index X addressing mode) Bitwise AND) - Bitwise AND accumulator with value from address formed by next two bytes and X. Set result to accumulator
                 uint8_t lowByte = bus.Read(PC+1);
                 uint8_t highByte = bus.Read(PC+2);
-                uint8_t address = (highByte << 8) | lowByte;
-                uint8_t result = address + X;
+                uint16_t address = (highByte << 8) | lowByte;
+                uint16_t result = address + X;
                 if ((result & 0xFF00) == (address & 0xFF00)) {
                     return 4;
                 }
@@ -525,6 +589,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0x2A: // ROL (Rotate left) - Shift accumulator value to left once. Carry goes to bit 0, and bit 7 goes to carry.
                 return 2;
+                break;
+            case 0x26: // ROL (zero page addressing mode) - shifts value at zero page address with offset to left. Carry goes to bit 0, and bit 7 goes to carry.
+                return 5;
                 break;
             case 0x6A: // ROR (Rotate right) - Shift accumulator value to right once. Carry goes to bit 7, and bit 0 goes to carry.
                 return 2;
@@ -776,7 +843,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         PC++;
                         break;
                     case 2:
-                        address_latch = (Fetch(PC, bus) << 8) + address_latch;
+                        address_latch |= (Fetch(PC, bus) << 8);
                         PC++;
                         break;
                     case 1:
@@ -834,6 +901,8 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                     }
                     case 1:
                         Y = bus.Read(address_latch);
+                        SetZFLAG(Y);
+                        SetNFLAG(Y);
                         break;
                     default:
                         break;
@@ -872,7 +941,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         PC++;
                         break;
                     case 2:
-                        address_latch = (Fetch(PC, bus) << 8) + address_latch;
+                        address_latch |= (Fetch(PC, bus) << 8);
                         PC++;
                         break;
                     case 1:
@@ -2800,6 +2869,34 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         A |= prev_carry;
                         SetZFLAG(A);
                         SetNFLAG(A);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+            case 0x26: // ROL (zero page addressing mode) - shifts value at zero page address with offset to left. Carry goes to bit 0, and bit 7 goes to carry.
+
+                switch (cycles) {
+                    case 4:
+                        address_latch = 0x0000;
+                        break;
+                    case 3:
+                        address_latch += Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t prev_carry = (status & C_FLAG) > 0;
+                        SetCFLAG((value & 0x80) > 0);
+                        value = value << 1;
+                        value |= prev_carry;
+                        SetZFLAG(value);
+                        SetNFLAG(value);
+                        bus.Write(address_latch, value);
                         break;
                     }
                     default:
