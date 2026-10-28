@@ -608,14 +608,31 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x05: // ORA (Zero page addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at zero page address with offset
                 return 3;
                 break;
+            case 0x15: // ORA (Zero page index X addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at zero page address with offset and X
+                return 4;
+                break;
             case 0x0D: // ORA (Absolute addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at address formed by next two bytes
                 return 4;
                 break;
-            case 0x1D: { // ORA (Absolute index X addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at address formed by next two bytes
+            case 0x1D: { // ORA (Absolute index X addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at address formed by next two bytes and X
                 uint8_t lowByte = bus.Read(PC+1);
                 uint8_t highByte = bus.Read(PC+2);
                 uint16_t address = (highByte << 8) | lowByte;
                 uint16_t result = address + X;
+                if ((result & 0xFF00) == (address & 0xFF00)) {
+                    return 4;
+                }
+                else {
+                    return 5;
+                }
+                break;
+
+            }
+            case 0x19: { // ORA (Absolute index Y addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at address formed by next two bytes and Y
+                uint8_t lowByte = bus.Read(PC+1);
+                uint8_t highByte = bus.Read(PC+2);
+                uint16_t address = (highByte << 8) | lowByte;
+                uint16_t result = address + Y;
                 if ((result & 0xFF00) == (address & 0xFF00)) {
                     return 4;
                 }
@@ -2938,6 +2955,26 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0x15: // ORA (Zero page index X addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at zero page address with offset and X
+
+                switch (cycles) {
+                    case 3:
+                        address_latch = 0x0000;
+                        break;
+                    case 2:
+                        address_latch += (static_cast<uint8_t>(Fetch(PC, bus) + X));
+                        PC++;
+                        break;
+                    case 1:
+                        A |= bus.Read(address_latch);
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
             case 0x0D: // ORA (Absolute addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at address formed by next two bytes
 
                 switch (cycles) {
@@ -2960,6 +2997,8 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
 
 
+
+
             case 0x1D: // ORA (Absolute index X addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at address formed by next two bytes
 
                 switch (cycles) {
@@ -2974,7 +3013,30 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         PC++;
                         break;
                     case 1:
-                        A |= bus.Read(address_latch);
+                        A |= bus.Read(address_latch+X);
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+            case 0x19: // ORA (Absolute index Y addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at address formed by next two bytes and Y
+
+                switch (cycles) {
+                    case 4:
+                        break; // page cross
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1:
+                        A |= bus.Read(address_latch+Y);
                         SetZFLAG(A);
                         SetNFLAG(A);
                         break;
