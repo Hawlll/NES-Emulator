@@ -573,6 +573,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x05: // ORA (Zero page addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at zero page address with offset
                 return 3;
                 break;
+            case 0x0D: // ORA (Absolute addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at address formed by next two bytes
+                return 4;
+                break;
             case 0x49: // EOR (immediate addressing mode) (Bitwise XOR) - Bitwise XOR accumulator and immediate. Set result to accumulator
                 return 2;
                 break;
@@ -594,11 +597,17 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x46: // LSR (Zero page addressing mode) - Shifts value at zero page address with offset right 1 bit. Stores bit 0 in carry
                 return 5;
                 break;
+            case 0x4E: // LSR (Absolute addressing mode) - Shifts value at address formed by next two bytes right 1 bit. Stores bit 0 in carry.
+                return 6;
+                break;
             case 0x2A: // ROL (Rotate left) - Shift accumulator value to left once. Carry goes to bit 0, and bit 7 goes to carry.
                 return 2;
                 break;
             case 0x26: // ROL (zero page addressing mode) - shifts value at zero page address with offset to left. Carry goes to bit 0, and bit 7 goes to carry.
                 return 5;
+                break;
+            case 0x2E: // ROL (Absolute addressing mode) - shifts value at address formed by next two bytes to the left once. Carry goes to bit 0, and bit 7 goes to carry.
+                return 6;
                 break;
             case 0x6A: // ROR (Rotate right) - Shift accumulator value to right once. Carry goes to bit 7, and bit 0 goes to carry.
                 return 2;
@@ -2741,6 +2750,27 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0x0D: // ORA (Absolute addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at address formed by next two bytes
+
+                switch (cycles) {
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1:
+                        A |= bus.Read(address_latch);
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
             case 0x49: // EOR (Bitwise XOR immediate addressing mode) - Bitwise XOR accumulator and immediate. Set result to accumulator
 
                 switch (cycles) {
@@ -2882,6 +2912,35 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0x4E: // LSR (Absolute addressing mode) - Shifts value at address formed by next two bytes right 1 bit. Stores bit 0 in carry.
+
+                switch (cycles) {
+                    case 5:
+                        break;
+                    case 4:
+                        break;
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        SetCFLAG((value & 0b00000001) > 0);
+                        value = value >> 1;
+                        SetZFLAG(value);
+                        SetNFLAG(false);
+                        bus.Write(address_latch, value);
+                        break;
+                    }
+                    default:
+                        break;
+
+                }
+                break;
 
             case 0x2A: // ROL (Rotate left) - Shift accumulator value to left. Carry goes to bit 0, and bit 7 goes to carry.
 
@@ -2911,6 +2970,37 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         PC++;
                         break;
                     case 2:
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t prev_carry = (status & C_FLAG) > 0;
+                        SetCFLAG((value & 0x80) > 0);
+                        value = value << 1;
+                        value |= prev_carry;
+                        SetZFLAG(value);
+                        SetNFLAG(value);
+                        bus.Write(address_latch, value);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+            case 0x2E: // ROL (Absolute addressing mode) - shifts value at address formed by next two bytes to the left once. Carry goes to bit 0, and bit 7 goes to carry.
+
+                switch (cycles) {
+                    case 5:
+                        break;
+                    case 4:
+                        break;
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
                         break;
                     case 1: {
                         uint8_t value = bus.Read(address_latch);
