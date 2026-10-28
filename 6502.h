@@ -208,6 +208,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x84: // STY (zero page addressing mode) (Store Y Register) - take value from Y register and store into zero page with immediate offset
                 return 3;
                 break;
+            case 0x94: // STY (zero page index X addressing mode) (Store Y Register) - take value from Y register and store into zero page address with offset and X
+                return 4;
+                break;
             case 0x69: // ADC (Add with carry) - take immediate value, carry, and add into accumulator register
                 return 2;
                 break;
@@ -333,8 +336,8 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xC4: // CPY (Zero page addressing mode) (Compare Y) - compare Y with value at zero page address with offset
                 return 3;
                 break;
-            case 0xEE: // INC (absolute addressing mode) (Increment Memory) - Increments value at absolute address by 1
-                return 6;
+            case 0xCC: // CPY (Absolute addressing mode) (Compare Y) - compare Y with value at address formed by next two bytes
+                return 4;
                 break;
             case 0xCE: // DEC (absolute addressing mode) (Decrement Memory) - Decrements value at absolute address by 1
                 return 6;
@@ -353,6 +356,12 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0xF6: // INC (zero page index X addressing mode) (Increment memory) - add one to value at zero page with offset and X
                 return 6;
+                break;
+            case 0xEE: // INC (absolute addressing mode) (Increment Memory) - Increments value at absolute address by 1
+                return 6;
+                break;
+            case 0xFE: // INC (absolute index X addressing mode) (Increment Memory) - Increments value at address formed by next two bytes by 1
+                return 7;
                 break;
             case 0xE8: // INX (Increment X) - Add one to the X register
                 return 2;
@@ -602,6 +611,20 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x0D: // ORA (Absolute addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at address formed by next two bytes
                 return 4;
                 break;
+            case 0x1D: { // ORA (Absolute index X addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at address formed by next two bytes
+                uint8_t lowByte = bus.Read(PC+1);
+                uint8_t highByte = bus.Read(PC+2);
+                uint16_t address = (highByte << 8) | lowByte;
+                uint16_t result = address + X;
+                if ((result & 0xFF00) == (address & 0xFF00)) {
+                    return 4;
+                }
+                else {
+                    return 5;
+                }
+                break;
+
+            }
             case 0x49: // EOR (immediate addressing mode) (Bitwise XOR) - Bitwise XOR accumulator and immediate. Set result to accumulator
                 return 2;
                 break;
@@ -1187,6 +1210,24 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 switch (cycles) {
                     case 2:
                         address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 1:
+                        bus.Write(address_latch, Y);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+            case 0x94: // STY (zero page index X addressing mode) (Store Y Register) - take value from Y register and store into zero page address with offset and X
+
+                switch (cycles) {
+                    case 3:
+                        address_latch = 0x0000;
+                        break;
+                    case 2:
+                        address_latch += (static_cast<uint8_t>(Fetch(PC, bus) + X));
                         PC++;
                         break;
                     case 1:
@@ -1826,6 +1867,34 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         SetZFLAG(result);
                         break;
                     }
+                    default:
+                        break;
+                }
+                break;
+
+            case 0xCC: // CPY (Absolute addressing mode) (Compare Y) - compare Y with value at address formed by next two bytes
+
+                switch (cycles) {
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t result = Y - value;
+
+                        SetCFLAG(Y >= value);
+                        SetNFLAG(result);
+                        SetZFLAG(result);
+                        break;
+                    }
+                    default:
+                        break;
+
                 }
                 break;
 
@@ -1840,6 +1909,37 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         PC++;
                         break;
                     case 2:
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        value++;
+                        SetZFLAG(value);
+                        SetNFLAG(value);
+                        bus.Write(address_latch, value);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0xFE: // INC (absolute index X addressing mode) (Increment Memory) - Increments value at address formed by next two bytes by 1
+
+                switch (cycles) {
+                    case 6:
+                        break;
+                    case 5:
+                        break;
+                    case 4:
+                        break;
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
                         break;
                     case 1: {
                         uint8_t value = bus.Read(address_latch);
@@ -2841,6 +2941,30 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x0D: // ORA (Absolute addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at address formed by next two bytes
 
                 switch (cycles) {
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1:
+                        A |= bus.Read(address_latch);
+                        SetZFLAG(A);
+                        SetNFLAG(A);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
+
+            case 0x1D: // ORA (Absolute index X addressing mode) (Bitwise OR) - Bitwise OR accumulator and value at address formed by next two bytes
+
+                switch (cycles) {
+                    case 4:
+                        break; // page cross
                     case 3:
                         address_latch = Fetch(PC, bus);
                         PC++;
