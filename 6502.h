@@ -378,6 +378,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                     }
                 }
                 else {
+                    address_latch = PC+2;
                     return 2;
                 }
                 break;
@@ -394,6 +395,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                     }
                 }
                 else {
+                    address_latch = PC+2;
                     return 2;
                 }
                 break;
@@ -410,6 +412,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                     }
                 }
                 else {
+                    address_latch = PC+2;
                     return 2;
                 }
                 break;
@@ -426,6 +429,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                     }
                 }
                 else {
+                    address_latch = PC+2;
                     return 2;
                 }
                 break;
@@ -442,6 +446,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                     }
                 }
                 else {
+                    address_latch = PC+2;
                     return 2;
                 }
                 break;
@@ -458,6 +463,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                     }
                 }
                 else {
+                    address_latch = PC+2;
                     return 2;
                 }
                 break;
@@ -474,6 +480,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                     }
                 }
                 else {
+                    address_latch = PC+2;
                     return 2;
                 }
                 break;
@@ -1576,7 +1583,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         PC++;
                         break;
                     case 1: {
-                        uint8_t value = bus.Read(address_latch+Y);
+                        uint8_t value = bus.Read(address_latch);
                         uint8_t result = A - value;
 
                         SetCFLAG(A >= value);
@@ -1985,6 +1992,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         break;
                     case 5:
                         address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
                         break;
                     case 4:
                         address_latch += X;
@@ -2106,6 +2114,8 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xF0: // BEQ (Branch if equal) - Increment PC by immediate signed offset if zero flag is on
 
                 switch (cycles) {
+                    case 3:
+                        break; // page cross
                     case 2: {
                         uint8_t imm = Fetch(PC, bus);
                         uint8_t sign = imm & (1 << 7);
@@ -2135,6 +2145,8 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xD0: // BNE (Branch if not equal) - Increment PC by immediate signed offset if zero flag is clear
 
                 switch (cycles) {
+                    case 3:
+                        break; // page cross
                     case 2: {
                         uint8_t imm = Fetch(PC, bus);
                         uint8_t sign = imm & (1 << 7);
@@ -2165,6 +2177,8 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x90: // BCC (Branch if carry clear) - Increment PC by immediate signed offset if carry flag is clear
 
                 switch (cycles) {
+                    case 3:
+                        break; // page cross
                     case 2: {
                         uint8_t imm = Fetch(PC, bus);
                         uint8_t sign = imm & (1 << 7);
@@ -2195,6 +2209,8 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x50: // BVC (Branch if overflow clear) - Increment PC by immediate signed offset if overflow flag is clear
 
                 switch (cycles) {
+                    case 3:
+                        break; // page cross
                     case 2: {
                         uint8_t imm = Fetch(PC, bus);
                         uint8_t sign = imm & (1 << 7);
@@ -2225,6 +2241,8 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x70: // BVS (Branch if overflow set) - Increment PC by immediate signed offset if overflow flag is set
 
                 switch (cycles) {
+                    case 3:
+                        break; // page cross
                     case 2: {
                         uint8_t imm = Fetch(PC, bus);
                         uint8_t sign = imm & (1 << 7);
@@ -2255,6 +2273,8 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xB0: // BCS (Branch if carry set) - Increment PC by immediate signed offset if carry flag is set
 
                 switch (cycles) {
+                    case 3:
+                        break; // page cross
                     case 2: {
                         uint8_t imm = Fetch(PC, bus);
                         uint8_t sign = imm & (1 << 7);
@@ -2285,6 +2305,8 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x30: // BMI (Branch if minus) - Increment PC by immediate signed offset if negative flag is set
 
                 switch (cycles) {
+                    case 3:
+                        break; // page cross
                     case 2: {
                         uint8_t imm = Fetch(PC, bus);
                         uint8_t sign = imm & (1 << 7);
@@ -2316,6 +2338,8 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x10: // BPL (Branch if plus) - Increment PC by immediate signed offset if negative flag is clear
 
                 switch (cycles) {
+                    case 3:
+                        break; // page cross
                     case 2: {
                         uint8_t imm = Fetch(PC, bus);
                         uint8_t sign = imm & (1 << 7);
