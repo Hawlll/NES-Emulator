@@ -303,9 +303,22 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
             }
-            case 0xE1: // SBC (Indirect X addressing mode) (Subtract with carry) - take value indirect address, inverse carry, and subtract from accumulator register
+            case 0xE1: // SBC (Indirect X addressing mode) (Subtract with carry) - take value from indirect X address, inverse carry, and subtract from accumulator register
                 return 6;
                 break;
+            case 0xF1: { // SBC (Indirect Y addressing mode) (Subtract with carry) - take value from indirect Y address, inverse carry, and subtract from accumulator register
+                uint8_t lowByte = bus.Read(0x0000 + bus.Read(PC+1));
+                uint8_t highByte = bus.Read(0x0000 + static_cast<uint8_t>(bus.Read(PC+1) + 1));
+                uint16_t address = (highByte << 8) | lowByte;
+                uint16_t result = ((highByte << 8) | lowByte) + Y;
+                if ((address & 0xFF00) == (result & 0xFF00)) {
+                    return 5;
+                }
+                else {
+                    return 6;
+                }
+                break;
+            }
             case 0x18: // CLC (Clear Carry) - Clears the carry flag in status register
                 return 2;
                 break;
@@ -313,6 +326,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 return 2;
                 break;
             case 0xD8: // CLD (Clear Decimal) - Clears the decimal flag
+                return 2;
+                break;
+            case 0xF8: // SED (Set Decimal) - Sets the decimal flag
                 return 2;
                 break;
             case 0xB8: // CLV (Clear overflow) - Clears the overflow flag
@@ -356,11 +372,30 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xD5: // CMP (Zero page index X addressing mode) (Compare accumulator) - compare accumulator value with value at zero page addresss with offset and X
                 return 4;
                 break;
+            case 0xC1: // CMP (Indirect X addressing mode) (Compare accumulator) - compare accumulator value with value at indirect X address
+                return 6;
+            case 0xD1: { // CMP (Indirect Y addressing mode) (Compare accumulator) - compare accumulator value with value at indirect Y address
+                uint8_t lowByte = bus.Read(0x0000 + bus.Read(PC+1));
+                uint8_t highByte = bus.Read(0x0000 + static_cast<uint8_t>(bus.Read(PC+1) + 1));
+                uint16_t address = (highByte << 8) | lowByte;
+                uint16_t result = ((highByte << 8) | lowByte) + Y;
+                if ((address & 0xFF00) == (result & 0xFF00)) {
+                    return 5;
+                }
+                else {
+                    return 6;
+                }
+                break;
+
+            }
             case 0xE0: // CPX (Compare X) - compare X value with immediate
                 return 2;
                 break;
             case 0xE4: // CPX (Zero page addressing mode) (Compare X) - compare X value with value at zero page address with offset
                 return 3;
+                break;
+            case 0xEC: // CPX (Absolute addressing mode) (Compare X) - compare X value with value at address formed by next two bytes
+                return 4;
                 break;
             case 0xC0: // CPY (Compare Y) - compare Y with immediate
                 return 2;
@@ -1110,11 +1145,12 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                     case 4:
                         break; // extra cycle due to page cross
                     case 3:
-                        address_latch = 0x0000 + Fetch(PC, bus) + Y;
+                        address_latch = 0x0000 + Fetch(PC, bus);
                         PC++;
                         break;
                     case 2:
                         address_latch |= (Fetch(PC, bus) << 8);
+                        address_latch += Y;
                         PC++;
                         break;
                     case 1:
@@ -1837,14 +1873,15 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
 
                 switch (cycles) {
                     case 4:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
                         break;
                     case 3:
-                        address_latch = 0x0000 + Fetch(PC, bus) + Y;
+                        address_latch |= (Fetch(PC, bus) << 8);
                         PC++;
                         break;
                     case 2:
-                        address_latch |= (Fetch(PC, bus) << 8);
-                        PC++;
+                        address_latch += Y;
                         break;
                     case 1: {
                         uint8_t value = bus.Read(address_latch);
@@ -1941,6 +1978,48 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0xF1: // SBC (Indirect Y addressing mode) (Subtract with carry) - take value from indirect Y address, inverse carry, and subtract from accumulator register
+
+                switch (cycles) {
+                    case 5:
+                        break; // page cross
+                    case 4: {
+                        address_latch = Fetch(PC, bus) << 8;
+                        PC++;
+                        break;
+                    }
+                    case 3: {
+                        uint8_t value = (address_latch & 0xFF00) >> 8;
+                        uint8_t offset = static_cast<uint8_t>(value);
+                        address_latch |= bus.Read(0x0000+offset);
+                        break;
+                    }
+                    case 2: {
+                        uint8_t value = (address_latch & 0xFF00) >> 8;
+                        uint8_t offset = static_cast<uint8_t>(value+1);
+                        address_latch = (bus.Read(0x0000+offset) << 8) | (address_latch & 0x00FF);
+                        address_latch += Y;
+                        break;
+                    }
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t carry = status & C_FLAG;
+                        uint8_t A_prev = A;
+
+                        A = A - value - !carry;
+
+                        SetNFLAG(A);
+                        SetZFLAG(A);
+                        SetCFLAG( A_prev >= (value + !carry) );
+                        SetVFLAG(((A_prev ^ A) & (A_prev ^ value) & 0x80) != 0);
+                        break;
+
+                    }
+                    default:
+                        break;
+                }
+                break;
+
             case 0x18: // CLC (Clear Carry) - Clears the carry flag in status register
 
                 switch (cycles) {
@@ -1973,6 +2052,18 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         break;
                 }
                 break;
+
+            case 0xF8: // SED (Set Decimal) - Sets the decimal flag
+
+                switch (cycles) {
+                    case 1:
+                        SetDFLAG(true);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+
 
             case 0xB8: // CLV (Clear overflow) - Clears the overflow flag
 
@@ -2133,6 +2224,78 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0xC1: // CMP (Indirect X addressing mode) (Compare accumulator) - compare accumulator value with value at indirect X address
+
+                switch (cycles) {
+                    case 5:
+                        break;
+                    case 4: {
+                        address_latch = (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    }
+                    case 3: {
+                        uint8_t value = (address_latch & 0xFF00) >> 8;
+                        uint8_t offset = static_cast<uint8_t>(value+X);
+                        address_latch |= bus.Read(0x0000+offset);
+                        break;
+                    }
+                    case 2: {
+                        uint8_t value = (address_latch & 0xFF00) >> 8;
+                        uint8_t offset = static_cast<uint8_t>(value+X+1);
+                        address_latch = (bus.Read(0x0000+offset) << 8) | (address_latch & 0x00FF);
+                        break;
+                    }
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t result = A - value;
+                        SetCFLAG(A >= value);
+                        SetNFLAG(result);
+                        SetZFLAG(result);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+            case 0xD1: // CMP (Indirect Y addressing mode) (Compare accumulator) - compare accumulator value with value at indirect Y address
+
+                switch (cycles) {
+                    case 5:
+                        break; // page cross
+                    case 4: {
+                        address_latch = Fetch(PC, bus) << 8;
+                        PC++;
+                        break;
+                    }
+                    case 3: {
+                        uint8_t value = (address_latch & 0xFF00) >> 8;
+                        uint8_t offset = static_cast<uint8_t>(value);
+                        address_latch |= bus.Read(0x0000+offset);
+                        break;
+                    }
+                    case 2: {
+                        uint8_t value = (address_latch & 0xFF00) >> 8;
+                        uint8_t offset = static_cast<uint8_t>(value+1);
+                        address_latch = (bus.Read(0x0000+offset) << 8) | (address_latch & 0x00FF);
+                        address_latch += Y;
+                        break;
+                    }
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t result = A - value;
+
+                        SetCFLAG(A >= value);
+                        SetNFLAG(result);
+                        SetZFLAG(result);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
 
             case 0xE0: // CPX (Compare X) - compare X value with immediate
 
@@ -2169,9 +2332,36 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         SetZFLAG(result);
                         break;
                     }
+                    default:
+                        break;
                 }
                 break;
 
+
+            case 0xEC: // CPX (Absolute addressing mode) (Compare X) - compare X value with value at address formed by next two bytes
+
+                switch (cycles) {
+                    case 3:
+                        address_latch = Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t result = X - value;
+
+                        SetCFLAG(X >= value);
+                        SetNFLAG(result);
+                        SetZFLAG(result);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
 
             case 0xC0: // CPY (Compare Y) - compare Y with immediate
 
