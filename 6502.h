@@ -290,6 +290,19 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xED: // SBC (Absolute addressing mode) (Subtract with carry) - take value from address formed by the next two bytes, inverse carry, and subtract from accumulator register
                 return 4;
                 break;
+            case 0xFD: { // SBC (Absolute index X addressing mode) (Subtract with carry) - take value from address formed by the next two bytes and X, inverse carry, and subtract from accumulator register.
+                uint8_t lowByte = bus.Read(PC+1);
+                uint8_t highByte = bus.Read(PC+2);
+                uint16_t address = (highByte << 8) | lowByte;
+                uint16_t result = address + X;
+                if ((address & 0xFF00) == (result & 0xFF00)) {
+                    return 4;
+                }
+                else {
+                    return 5;
+                }
+                break;
+            }
             case 0xF9: { // SBC (Absolute index Y addressing mode) (Subtract with carry) - take value from address formed by the next two bytes and Y, inverse carry, and subtract from accumulator register.
                 uint8_t lowByte = bus.Read(PC+1);
                 uint8_t highByte = bus.Read(PC+2);
@@ -1869,6 +1882,40 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0xFD: // SBC (Absolute index X addressing mode) (Subtract with carry) - take value from address formed by the next two bytes and X, inverse carry, and subtract from accumulator register.
+
+                switch (cycles) {
+                    case 4:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 3:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 2:
+                        address_latch += X;
+                        break;
+                    case 1: {
+                        uint8_t value = bus.Read(address_latch);
+                        uint8_t carry = status & C_FLAG;
+                        uint8_t A_prev = A;
+
+                        A = A - value - !carry;
+
+                        SetNFLAG(A);
+                        SetZFLAG(A);
+                        SetCFLAG( A_prev >= (value + !carry) );
+                        SetVFLAG(((A_prev ^ A) & (A_prev ^ value) & 0x80) != 0);
+                        break;
+
+                    }
+                    default:
+                        break;
+
+                }
+                break;
+
             case 0xF9: // SBC (Absolute index Y addressing mode) (Subtract with carry) - take value from address formed by the next two bytes and Y, inverse carry, and subtract from accumulator register.
 
                 switch (cycles) {
@@ -2471,6 +2518,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         break;
                     case 2:
                         address_latch |= (Fetch(PC, bus) << 8);
+                        address_latch += X;
                         PC++;
                         break;
                     case 1: {
