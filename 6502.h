@@ -286,6 +286,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xD8: // CLD (Clear Decimal) - Clears the decimal flag
                 return 2;
                 break;
+            case 0xB8: // CLV (Clear overflow) - Clears the overflow flag
+                return 2;
+                break;
             case 0xC9: // CMP (Compare Accumulator) - compare accumulator value with immediate
                 return 2;
                 break;
@@ -390,7 +393,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xF0: // BEQ (Branch if equal) - Increment PC by immediate signed offset if zero flag is on
                 if (status & Z_FLAG) {
                     uint16_t address = PC+2;
-                    int8_t offset = bus.Read(PC+1);
+                    int8_t offset = static_cast<int8_t>(bus.Read(PC+1));
                     uint16_t result = PC + 2 + offset;
                     if ((address & 0xFF00) == (result & 0xFF00)) {
                         return 3; // branch taken
@@ -407,7 +410,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xD0: // BNE (Branch if not equal) - Increment PC by immediate signed offset if zero flag is clear
                 if ((status & Z_FLAG) < 1) {
                     uint16_t address = PC+2;
-                    int8_t offset = bus.Read(PC+1);
+                    int8_t offset = static_cast<int8_t>(bus.Read(PC+1));
                     uint16_t result = PC + 2 + offset;
                     if ((address & 0xFF00) == (result & 0xFF00)) {
                         return 3; // branch taken
@@ -424,7 +427,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x90: // BCC (Branch if carry clear) - Increment PC by immediate signed offset if carry flag is clear
                 if ((status & C_FLAG) < 1) {
                     uint16_t address = PC+2;
-                    int8_t offset = bus.Read(PC+1);
+                    int8_t offset = static_cast<int8_t>(bus.Read(PC+1));
                     uint16_t result = PC + 2 + offset;
                     if ((address & 0xFF00) == (result & 0xFF00)) {
                         return 3; // branch taken
@@ -441,7 +444,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0xB0: // BCS (Branch if carry set) - Increment PC by immediate signed offset if carry flag is set
                 if (status & C_FLAG) {
                     uint16_t address = PC+2;
-                    int8_t offset = bus.Read(PC+1);
+                    int8_t offset = static_cast<int8_t>(bus.Read(PC+1));
                     uint16_t result = PC + 2 + offset;
                     if ((address & 0xFF00) == (result & 0xFF00)) {
                         return 3; // branch taken
@@ -458,7 +461,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x50: // BVC (Branch if overflow clear) - Increment PC by immediate signed offset if overflow flag is clear
                 if ((status & V_FLAG) < 1) {
                     uint16_t address = PC+2;
-                    int8_t offset = bus.Read(PC+1);
+                    int8_t offset = static_cast<int8_t>(bus.Read(PC+1));
                     uint16_t result = PC + 2 + offset;
                     if ((address & 0xFF00) == (result & 0xFF00)) {
                         return 3; // branch taken
@@ -475,7 +478,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x70: // BVS (Branch if overflow set) - Increment PC by immediate signed offset if overflow flag is set
                 if (status & V_FLAG) {
                     uint16_t address = PC+2;
-                    int8_t offset = bus.Read(PC+1);
+                    int8_t offset = static_cast<int8_t>(bus.Read(PC+1));
                     uint16_t result = PC + 2 + offset;
                     if ((address & 0xFF00) == (result & 0xFF00)) {
                         return 3; // branch taken
@@ -492,7 +495,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x30: // BMI (Branch if minus) - Increment PC by immediate signed offset if negative flag is set
                 if (status & N_FLAG) {
                     uint16_t address = PC+2;
-                    int8_t offset = bus.Read(PC+1);
+                    int8_t offset = static_cast<int8_t>(bus.Read(PC+1));
                     uint16_t result = PC + 2 + offset;
                     if ((address & 0xFF00) == (result & 0xFF00)) {
                         return 3; // branch taken
@@ -509,7 +512,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x10: // BPL (Branch if plus) - Increment PC by immediate signed offset if negative flag is clear
                 if ((status & N_FLAG) < 1) {
                     uint16_t address = PC+2;
-                    int8_t offset = bus.Read(PC+1);
+                    int8_t offset = static_cast<int8_t>(bus.Read(PC+1));
                     uint16_t result = PC + 2 + offset;
                     if ((address & 0xFF00) == (result & 0xFF00)) {
                         return 3; // branch taken
@@ -1659,6 +1662,16 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0xB8: // CLV (Clear overflow) - Clears the overflow flag
+
+                switch (cycles) {
+                    case 1:
+                        SetVFLAG(false);
+                        break;
+                    default:
+                        break;
+                }
+                break;
 
             case 0xC9: // CMP (Compare Accumulator) - compare accumulator value with immediate
 

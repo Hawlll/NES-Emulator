@@ -28,7 +28,7 @@ int main()
 
     NES nes(cpu, ppu, bus);
 
-    cart.Load("rom_tests/Super Mario Bros. (Japan, USA).nes");
+    cart.Load("rom_tests/cpu_all_official.nes");
 
     cpu.Reset(bus);
 
@@ -140,6 +140,8 @@ int main()
         SDL_RenderTexture(renderer, texture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
         buttonState = 0x00;
+        std::cout << "Test Num: " <<  std::format("{:#X}", bus.Read(0x00F1)) << std::endl;
+        std::cout << "Opcode: " << std::format("{:#X}", bus.Read(0x00F2)) << std::endl;
     }
 
     SDL_DestroyTexture(texture);
