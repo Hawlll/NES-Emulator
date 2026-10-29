@@ -249,6 +249,22 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
             case 0x75: // ADC (Zero page index X addressing mode) (Add with carry) - add value from zero page address with offset and X and carry into accumulator
                 return 4;
                 break;
+            case 0x61: // ADC (Indirect X addressing mode) (Add with carry) - add value from indirect X address and carry into accumulator
+                return 6;
+                break;
+            case 0x71: { // ADC (Indirect Y addressing mode) (Add with carry) - add value from indirect Y address and carry into accumulator
+                uint8_t lowByte = bus.Read(0x0000 + bus.Read(PC+1));
+                uint8_t highByte = bus.Read(0x0000 + static_cast<uint8_t>(bus.Read(PC+1) + 1));
+                uint16_t address = (highByte << 8) | lowByte;
+                uint16_t result = ((highByte << 8) | lowByte) + Y;
+                if ((address & 0xFF00) == (result & 0xFF00)) {
+                    return 5;
+                }
+                else {
+                    return 6;
+                }
+                break;
+            }
             case 0xE9: // SBC  (Subtract with carry) take immediate value, inverse carry, and subtract from accumulator register
                 return 2;
                 break;
@@ -778,6 +794,9 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             case 0x66: // ROR (zero page addressing mode) - Shift value at zero page address with offset to right once. Carry goes to bit 7, and bit 0 goes to carry
                 return 5;
+                break;
+            case 0x6E: // ROR (Absolute addressing mode) - Shifts value at address formed by next two bytes to right once. Carry goes to bit 7, and bit 0 goes to carry
+                return 6;
                 break;
             case 0x7E: // ROR (Absolute index X addressing mode) Shift value at address formed by next two bytes and X to right once. Carry goes to bit 7, and bit 0 goes to carry.
                 return 7;
@@ -1529,6 +1548,87 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                     default:
                         break;
 
+                }
+                break;
+
+            case 0x61: // ADC (Indirect X addressing mode) (Add with carry) - add value from indirect X address and carry into accumulator
+
+                switch (cycles) {
+                    case 5:
+                        address_latch = Fetch(PC, bus) << 8;
+                        PC++;
+                        break;
+                    case 4: {
+                        uint8_t value = (address_latch & 0xFF00) >> 8;
+                        uint8_t offset = static_cast<uint8_t>(value+X);
+                        address_latch |= bus.Read(0x0000+offset);
+                        break;
+                    }
+                    case 3: {
+                        uint8_t value = (address_latch & 0xFF00) >> 8;
+                        uint8_t offset = static_cast<uint8_t>(value+X+1);
+                        address_latch = (bus.Read(0x0000+offset) << 8) | (address_latch & 0x00FF);
+                        break;
+                    }
+                    case 2: {
+                        break;
+                    }
+                    case 1: {
+                        uint8_t carry = (status & C_FLAG) > 0;
+                        uint16_t operation_result = A + bus.Read(address_latch) + carry;
+                        uint8_t A_prev = A;
+
+                        A = operation_result & 0x00FF;
+
+                        SetNFLAG(A);
+                        SetZFLAG(A);
+                        SetCFLAG(operation_result);
+                        SetVFLAG(bus.Read(address_latch), A_prev, A);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                break;
+
+            case 0x71: // ADC (Indirect Y addressing mode) (Add with carry) - add value from indirect Y address and carry into accumulator
+
+                switch (cycles) {
+                    case 5:
+                        break; // page cross
+                    case 4: {
+                        address_latch = Fetch(PC, bus) << 8;
+                        PC++;
+                        break;
+                    }
+                    case 3: {
+                        uint8_t value = (address_latch & 0xFF00) >> 8;
+                        uint8_t offset = static_cast<uint8_t>(value);
+                        address_latch |= bus.Read(0x0000+offset);
+                        break;
+                    }
+                    case 2: {
+                        uint8_t value = (address_latch & 0xFF00) >> 8;
+                        uint8_t offset = static_cast<uint8_t>(value+1);
+                        address_latch = (bus.Read(0x0000+offset) << 8) | (address_latch & 0x00FF);
+                        address_latch += Y;
+                        break;
+                    }
+                    case 1: {
+                        uint8_t carry = (status & C_FLAG) > 0;
+                        uint16_t operation_result = A + bus.Read(address_latch) + carry;
+                        uint8_t A_prev = A;
+
+                        A = operation_result & 0x00FF;
+
+                        SetNFLAG(A);
+                        SetZFLAG(A);
+                        SetCFLAG(operation_result);
+                        SetVFLAG(bus.Read(address_latch), A_prev, A);
+                        break;
+                    }
+                    default:
+                        break;
                 }
                 break;
 
@@ -3894,6 +3994,38 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
+            case 0x6E: // ROR (Absolute addressing mode) - Shifts value at address formed by next two bytes to right once. Carry goes to bit 7, and bit 0 goes to carry
+
+                switch (cycles) {
+                    case 5:
+                        address_latch = 0x0000 + Fetch(PC, bus);
+                        PC++;
+                        break;
+                    case 4:
+                        address_latch |= (Fetch(PC, bus) << 8);
+                        PC++;
+                        break;
+                    case 3:
+                        break;
+                    case 2:
+                        break;
+                    case 1: {
+                        uint8_t prev_carry = (status & C_FLAG) > 0;
+                        uint8_t value = bus.Read(address_latch);
+                        SetCFLAG((value & 0x01) > 0);
+                        value = value >> 1;
+                        value |= (prev_carry << 7);
+                        SetZFLAG(value);
+                        SetNFLAG(value);
+                        bus.Write(address_latch, value);
+                        break;
+                    }
+                    default:
+                        break;
+
+                }
+                break;
+
             case 0x7E: // ROR (Absolute index X addressing mode) Shift value at address formed by next two bytes and X to right once. Carry goes to bit 7, and bit 0 goes to carry.
 
                 switch (cycles) {
@@ -3981,7 +4113,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
 
             default:
-                throw std::runtime_error("Instruction does not exist: " + std::format("{:#X}\n", (int)instruction_latch));
+                throw std::runtime_error("Instruction does not exist: " + std::format("{:#X}n", (int)instruction_latch));
                 break;
         }
 
