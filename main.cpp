@@ -28,7 +28,7 @@ int main()
 
     NES nes(cpu, ppu, bus);
 
-    cart.Load("rom_tests/Super Mario Bros. (Japan, USA).nes");
+    cart.Load("rom_tests/Balloon Fight (USA).nes");
 
     cpu.Reset(bus);
 
