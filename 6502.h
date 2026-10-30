@@ -94,12 +94,14 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 return 4;
                 break;
             case 0xBD: { // LDA (Absolute index X addressing mode) (Load into Accumulator register) - take value from sum of (absolute address formed by next two bytes) + (X register) and put into accumulator. grants another cycle if page cross
-                uint8_t low_byte = bus.Read(PC+1);
-                uint16_t result = low_byte + X;
-                if (result <= 0x00FF) {
+                uint8_t lowByte = bus.Read(PC+1);
+                uint8_t highByte = bus.Read(PC+2);
+                uint16_t address = (highByte << 8) | lowByte;
+                uint16_t result = address + X;
+                if ((address & 0xFF00) == (result & 0xFF00)) {
                     return 4;
                 }
-                else{
+                else {
                     return 5;
                 }
                 break;
@@ -125,12 +127,14 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 break;
             }
             case 0xB9: { // LDA (Absolute index Y addressing mode) (Load into Accumulator register) - take value from sum of (absolute address formed by next two bytes) + (Y register) and put into accumulator. grants another cycle if page cross
-                uint8_t low_byte = bus.Read(PC+1);
-                uint16_t result = low_byte + Y;
-                if (result <= 0x00FF) {
+                uint8_t lowByte = bus.Read(PC+1);
+                uint8_t highByte = bus.Read(PC+2);
+                uint16_t address = (highByte << 8) | lowByte;
+                uint16_t result = address + Y;
+                if ((address & 0xFF00) == (result & 0xFF00)) {
                     return 4;
                 }
-                else{
+                else {
                     return 5;
                 }
                 break;
@@ -882,6 +886,13 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                           << std::hex << static_cast<int>(opcode)
                           << " at PC: $" << PC
                           << '\n';
+                std::cout << "Address Latch: " << std::format("{:#X}", (int)address_latch) << std::endl;
+                std::cout << "A: " << std::format("{:#X}", (int)A) << std::endl;
+                std::cout << "X: " << std::format("{:#X}", (int)X) << std::endl;
+                std::cout << "Y: " << std::format("{:#X}", (int)Y) << std::endl;
+                std::cout << "SP: " << std::format("{:#X}", (int)SP) << std::endl;
+                std::cout << "Status: " << std::format("{:#X}", (int)status) << std::endl;
+
 
                 throw std::runtime_error("Unsupported opcode");
                 break;
@@ -953,11 +964,11 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                     case 4:
                         break; // extra cycle due to page cross
                     case 3:
-                        address_latch = 0x0000 + Fetch(PC, bus) + X;
+                        address_latch = 0x0000 + Fetch(PC, bus);
                         PC++;
                         break;
                     case 2:
-                        address_latch = (Fetch(PC, bus) << 8) + address_latch;
+                        address_latch = (Fetch(PC, bus) << 8) + address_latch + X;
                         PC++;
                         break;
                     case 1:
@@ -1079,7 +1090,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                 }
                 break;
 
-            case 0xA2: // LDX(Load into X register) - take immediate value and load into x register
+            case 0xA2: // LDX (Load into X register) - take immediate value and load into x register
 
                 switch (cycles) {
                     case 1:
@@ -1262,7 +1273,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
                         break;
                     case 2:
                         address_latch |= (Fetch(PC, bus) << 8);
-                        address_latch += Y;
+                        address_latch += X;
                         PC++;
                         break;
                     case 1:
@@ -1886,15 +1897,15 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
 
                 switch (cycles) {
                     case 4:
+                        break; // page cross
+                    case 3:
                         address_latch = 0x0000 + Fetch(PC, bus);
                         PC++;
                         break;
-                    case 3:
-                        address_latch |= (Fetch(PC, bus) << 8);
-                        PC++;
-                        break;
                     case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
                         address_latch += X;
+                        PC++;
                         break;
                     case 1: {
                         uint8_t value = bus.Read(address_latch);
@@ -1920,15 +1931,15 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
 
                 switch (cycles) {
                     case 4:
+                        break; // page cross
+                    case 3:
                         address_latch = 0x0000 + Fetch(PC, bus);
                         PC++;
                         break;
-                    case 3:
-                        address_latch |= (Fetch(PC, bus) << 8);
-                        PC++;
-                        break;
                     case 2:
+                        address_latch |= (Fetch(PC, bus) << 8);
                         address_latch += Y;
+                        PC++;
                         break;
                     case 1: {
                         uint8_t value = bus.Read(address_latch);
@@ -2193,7 +2204,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
 
                 switch (cycles) {
                     case 4:
-                        break;
+                        break; // page cross
                     case 3:
                         address_latch = Fetch(PC, bus);
                         PC++;
@@ -2220,7 +2231,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
 
                 switch (cycles) {
                     case 4:
-                        break;
+                        break; // page cross
                     case 3:
                         address_latch = Fetch(PC, bus);
                         PC++;
@@ -3371,7 +3382,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
 
                 switch (cycles) {
                     case 4:
-                        break;
+                        break; // page cross
                     case 3:
                         address_latch = 0x0000 + Fetch(PC, bus) + X;
                         PC++;
@@ -3397,7 +3408,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
 
                 switch (cycles) {
                     case 4:
-                        break;
+                        break; // page cross
                     case 3:
                         address_latch = 0x0000 + Fetch(PC, bus) + Y;
                         PC++;
@@ -3687,7 +3698,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
 
                 switch (cycles) {
                     case 5:
-                        break;
+                        break; // page cross
                     case 4: {
                         address_latch = Fetch(PC, bus) << 8;
                         PC++;
@@ -3886,7 +3897,7 @@ struct CPU { // emulated after 6502. 8 bit data, 16 bit memory address space. li
 
                 switch (cycles) {
                     case 5:
-                        break;
+                        break; // page cross
                     case 4: {
                         address_latch = Fetch(PC, bus) << 8;
                         PC++;
